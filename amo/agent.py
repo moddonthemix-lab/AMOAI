@@ -11,6 +11,7 @@ from typing import Any
 from . import tools
 from .config import settings
 from .confirm import instant_reply
+from .voice.tts import active_personality
 from .db import Database, get_db, local_now, now_iso
 from .llm import LLMError, get_llm
 from .memory import Memory
@@ -87,7 +88,7 @@ class Agent:
             weekday=now.strftime("%A"),
             time=now.strftime("%H:%M"),
             voice_hint=VOICE_HINT if channel == "voice" else "",
-            personality=PERSONALITIES.get(settings.personality, "").format(owner=settings.owner_name),
+            personality=PERSONALITIES.get(active_personality(), "").format(owner=settings.owner_name),
             core=_format_memories(core) or "- (nothing yet — learn as you go)",
             relevant=("\nPossibly relevant memories:\n" + _format_memories(relevant) + "\n") if relevant else "",
             reflection=("\nYour latest weekly reflection (patterns you noticed):\n" + latest["summary"] + "\n")

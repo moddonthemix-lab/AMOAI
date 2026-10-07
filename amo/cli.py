@@ -29,7 +29,6 @@ from pathlib import Path
 
 from .config import settings
 
-PIPER_VOICE_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/"
 
 
 def cmd_serve(a):
@@ -65,8 +64,14 @@ def cmd_doctor(_a):
         print(f"Whisper (STT)   ✓ model {settings.whisper_model}")
     except ImportError:
         print('Whisper (STT)   – not installed (optional): pip install -e ".[voice]"')
-    voice = Path(settings.piper_voice)
-    print(f"Piper (TTS)     {'✓ ' + voice.name if voice.is_file() else '– no voice yet: amo setup-voice'}")
+    from .voice.tts import piper_installed, piper_path, resolve_style
+
+    vs = resolve_style()
+    if not piper_installed():
+        print("Voice (TTS)     – Piper not installed; using the built-in Mac voice")
+    else:
+        have = piper_path(vs.piper).is_file()
+        print(f"Voice (TTS)     {'✓' if have else '–'} {settings.voice} ({vs.piper}){'' if have else ' — downloads on first use'}")
     print(f"API key         {'✓ set' if settings.api_key and settings.api_key != 'change-me' else '⚠ set AMO_API_KEY in .env'}")
     sys.exit(0 if ok else 1)
 
@@ -102,18 +107,16 @@ def cmd_voice(a):
 
 
 def cmd_setup_voice(_a):
-    target = Path(settings.piper_voice)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    name = "en_US-lessac-medium.onnx"
-    for suffix in ("", ".json"):
-        dest = target.with_name(target.name + suffix) if suffix else target
-        if dest.exists():
-            print(f"✓ {dest} already exists")
-            continue
-        print(f"downloading {name + suffix} …")
-        urllib.request.urlretrieve(PIPER_VOICE_BASE + name + suffix, dest)
-    print("Piper voice ready.")
+    """Download AMO's voice (the Piper voice behind AMO_VOICE)."""
+    from .voice.tts import download_piper_voice, piper_installed, resolve_style
 
+    style = resolve_style()
+    if not piper_installed():
+        print("Piper isn't installed (pip install piper-tts) — AMO will use the built-in Mac voice.")
+        return
+    print(f"downloading voice {style.piper} …")
+    download_piper_voice(style.piper)
+    print("voice ready.")
 
 def _restart_server() -> None:
     """Restart the background AMO server (macOS launchd) so it picks up .env changes."""
@@ -220,7 +223,7 @@ def cmd_bench(a):
 
 SAMPLE_LINES = {
     "computer": "Good evening. I've reviewed your schedule. It's about as organised as I expected.",
-    "obadiah": "Good evening. I've reviewed your schedule. It's about as organised as I expected.",
+    "amo": "Good evening. I've reviewed your schedule. It's about as organised as I expected.",
     "jarvis": "Good evening. Your studio is booked at seven, and revenue is up twelve percent this week.",
     "british-female": "Good evening. You have two sessions today and one item ready to list.",
     "default": "Hey, I'm AMO. You have two sessions today and one item ready to list.",

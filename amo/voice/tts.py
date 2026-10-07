@@ -2,8 +2,8 @@
 macOS voices, plus optional pitch and "robot" effects.
 
 Presets (AMO_VOICE):
-  computer        Obadiah: deadpan British computer — slightly deeper, metallic edge
-  obadiah         Obadiah with a light robotic touch
+  amo             Obadiah, clean — AMO's voice (default)
+  computer        Obadiah, slightly deeper with a metallic computer edge
   jarvis          calm British butler with a light digital polish
   british-female  British female voice
   default         neutral American voice
@@ -41,14 +41,18 @@ class VoiceStyle:
     pitch: float = 0.0    # semitones
     robot: float = 0.0    # 0..1 metallic/ring-mod amount
     personality: str = "default"
+    # Piper variation: lower = cleaner, steadier, less breathy (Piper defaults 0.667 / 0.8)
+    noise: float | None = None
+    noise_w: float | None = None
 
 
 PRESETS: dict[str, VoiceStyle] = {
-    # Obadiah (Piper "semaine" voice): deadpan British male — the sarcastic computer.
+    # AMO's voice: Obadiah (Piper "semaine" voice), a deadpan British male, rendered clean —
+    # no effects, reduced breathiness and wobble.
+    "amo": VoiceStyle("en_GB-semaine-medium:obadiah", ("Daniel", "Oliver", "Arthur"),
+                      personality="computer", noise=0.35, noise_w=0.5),
     "computer": VoiceStyle("en_GB-semaine-medium:obadiah", ("Daniel", "Oliver", "Arthur"),
-                           rate=1.0, pitch=-1.0, robot=0.32, personality="computer"),
-    "obadiah": VoiceStyle("en_GB-semaine-medium:obadiah", ("Daniel", "Oliver", "Arthur"),
-                          rate=1.0, pitch=0.0, robot=0.15, personality="computer"),
+                           pitch=-1.0, robot=0.32, personality="computer", noise=0.35, noise_w=0.5),
     "jarvis": VoiceStyle("en_GB-alan-medium", ("Daniel", "Oliver", "Arthur"),
                          rate=1.0, pitch=-0.5, robot=0.12, personality="jarvis"),
     "british-female": VoiceStyle("en_GB-jenny_dioco-medium", ("Kate", "Serena", "Stephanie", "Martha", "Daniel"),
@@ -90,6 +94,11 @@ def resolve_style(voice: str | None = None) -> VoiceStyle:
     if settings.voice_robot:
         overrides["robot"] = float(settings.voice_robot)
     return replace(style, **overrides) if overrides else style
+
+
+def active_personality() -> str:
+    """AMO_PERSONALITY if set, otherwise the personality that goes with the voice preset."""
+    return settings.personality or resolve_style().personality
 
 
 def piper_dir() -> Path:
@@ -161,8 +170,13 @@ def _piper_wav(text: str, style: VoiceStyle, speed: float) -> bytes:
         legacy = Path(settings.piper_voice)
         if style.piper == PRESETS["default"].piper and legacy.is_file():
             path = legacy
+        elif piper_installed():
+            try:
+                path = download_piper_voice(style.piper)  # first use: fetch the voice (~75 MB)
+            except Exception as e:  # noqa: BLE001 — offline etc.: fall back to the Mac voice
+                raise VoiceUnavailable(f"couldn't download Piper voice {style.piper}: {e}") from e
         else:
-            raise VoiceUnavailable(f"Piper voice {style.piper} not downloaded (amo set-voice downloads it)")
+            raise VoiceUnavailable("Piper isn't installed")
     if not piper_installed():
         raise VoiceUnavailable("Piper isn't installed")
     from piper import PiperVoice
@@ -179,12 +193,14 @@ def _piper_wav(text: str, style: VoiceStyle, speed: float) -> bytes:
             try:
                 from piper import SynthesisConfig
 
-                cfg = SynthesisConfig(length_scale=length_scale, speaker_id=sid)
+                cfg = SynthesisConfig(length_scale=length_scale, speaker_id=sid,
+                                      noise_scale=style.noise, noise_w_scale=style.noise_w)
                 voice.synthesize_wav(text, wav, syn_config=cfg)
             except ImportError:
                 voice.synthesize_wav(text, wav)
         else:  # piper-tts 1.2
-            voice.synthesize(text, wav, length_scale=length_scale, speaker_id=sid)
+            voice.synthesize(text, wav, length_scale=length_scale, speaker_id=sid,
+                             noise_scale=style.noise, noise_w=style.noise_w)
     return buf.getvalue()
 
 

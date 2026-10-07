@@ -77,7 +77,7 @@ for pkg in "numpy>=1.26" "sounddevice>=0.4" "faster-whisper>=1.0"; do
   uv pip install --python .venv/bin/python -q "$pkg" || warn "$pkg failed to install — voice input may not work"
 done
 if uv pip install --python .venv/bin/python -q "piper-tts>=1.3" 2>/dev/null; then
-  .venv/bin/amo setup-voice || warn "couldn't download the Piper voice — AMO will use the macOS voice"
+  .venv/bin/amo setup-voice || warn "couldn't download AMO's voice — it will use the macOS voice"
 else
   warn "Piper isn't available for this Mac — AMO will speak with the built-in macOS voice (that's fine)"
 fi

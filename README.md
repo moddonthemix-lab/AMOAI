@@ -90,18 +90,16 @@ Or just tell it things in chat — it remembers.
   for Terminal — say yes (System Settings → Privacy & Security → Microphone).
 - If Piper isn't available (e.g. on some Intel Macs), AMO speaks with the built-in macOS voice.
 
-### Picking AMO's voice
+### AMO's voice
 
+AMO speaks as **Obadiah**, a clean, deadpan British voice (Piper), with a dry-wit personality to match.
+It downloads automatically. Options if you ever want a change:
 ```sh
-amo try-voice computer     # dry, sarcastic British computer with a metallic edge
-amo try-voice jarvis       # calm British butler
-amo try-voice british-female
-amo set-voice computer     # switch (voice + matching personality)
+amo try-voice computer     # Obadiah with a robotic edge
+amo voices --all           # every Piper English voice
+amo set-voice amo          # back to AMO's voice
 ```
-Fine-tune in `.env`: `AMO_VOICE_PITCH=-3` (deeper), `AMO_VOICE_ROBOT=0.5` (more robotic),
-`AMO_VOICE_RATE=1.1` (faster), then `./scripts/mac-autostart.sh restart`.
-Uses Piper's neural British voices when Piper is installed, otherwise the Mac's built-in
-"Daniel" voice (more at System Settings → Accessibility → Spoken Content → Manage Voices).
+Without Piper installed, AMO falls back to the Mac's built-in British voice "Daniel".
 
 ### Picking a model (Apple Silicon, by unified memory)
 

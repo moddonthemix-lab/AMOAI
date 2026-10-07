@@ -52,6 +52,18 @@ elif [[ -x .venv/bin/pip ]]; then
   .venv/bin/pip install -q -e .
 fi
 
+step "Updating AMO's voice"
+if command -v uv >/dev/null && [[ -x .venv/bin/python ]]; then
+  uv pip install --python .venv/bin/python -q numpy "piper-tts>=1.3" 2>/dev/null \
+    || echo "  Piper isn't available for this Mac — AMO will use the built-in Mac voice"
+fi
+# One-time: switch to AMO's final voice (clean Obadiah). Later voice choices are left alone.
+if [[ ! -f data/.voice-amo ]]; then
+  .venv/bin/amo set-voice amo >/dev/null 2>&1 || true
+  mkdir -p data && touch data/.voice-amo
+fi
+.venv/bin/amo setup-voice 2>/dev/null || true
+
 step "Restarting AMO"
 ./scripts/mac-autostart.sh restart
 sleep 3

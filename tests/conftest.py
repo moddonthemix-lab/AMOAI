@@ -3,6 +3,7 @@ import os
 os.environ["AMO_ENV_FILE"] = "/nonexistent"
 os.environ["AMO_API_KEY"] = ""
 os.environ["AMO_AUTO_LEARN"] = "0"
+os.environ["AMO_VOICE"] = "default"
 
 import pytest  # noqa: E402
 

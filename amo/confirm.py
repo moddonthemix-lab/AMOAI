@@ -11,7 +11,6 @@ import random
 from datetime import datetime
 from typing import Any, Callable
 
-from .config import settings
 
 # Dry one-liners for the "computer" personality's instant confirmations.
 COMPUTER_QUIPS = (
@@ -153,6 +152,8 @@ def instant_reply(calls: list[dict[str, Any]]) -> str | None:
         except (KeyError, TypeError, ValueError):
             return None
     reply = " ".join(lines)
-    if settings.personality == "computer":
+    from .voice.tts import active_personality
+
+    if active_personality() == "computer":
         reply += " " + random.choice(COMPUTER_QUIPS)
     return reply

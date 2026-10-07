@@ -54,14 +54,15 @@ class Settings:
     fast_model: str = field(default_factory=lambda: _env("AMO_FAST_MODEL", "llama3.2:3b"))
     embed_model: str = field(default_factory=lambda: _env("AMO_EMBED_MODEL", "nomic-embed-text"))
 
-    # Voice: a preset (computer | jarvis | british-female | default), a Piper voice name,
+    # Voice: a preset (amo | computer | jarvis | british-female | default), a Piper voice name,
     # or "say:<macOS voice>". Rate/pitch/robot override the preset when set.
-    voice: str = field(default_factory=lambda: _env("AMO_VOICE", "default"))
+    voice: str = field(default_factory=lambda: _env("AMO_VOICE", "amo"))
     voice_rate: str = field(default_factory=lambda: _env("AMO_VOICE_RATE", ""))
     voice_pitch: str = field(default_factory=lambda: _env("AMO_VOICE_PITCH", ""))
     voice_robot: str = field(default_factory=lambda: _env("AMO_VOICE_ROBOT", ""))
-    # Personality: default | computer (dry, sarcastic British computer) | jarvis (polished butler)
-    personality: str = field(default_factory=lambda: _env("AMO_PERSONALITY", "default"))
+    # Personality: default | computer (dry, sarcastic British computer) | jarvis (polished butler).
+    # Empty = whatever suits the voice preset (AMO's own voice → computer).
+    personality: str = field(default_factory=lambda: _env("AMO_PERSONALITY", ""))
 
     whisper_model: str = field(default_factory=lambda: _env("AMO_WHISPER_MODEL", "base.en"))
     piper_voice: str = field(
