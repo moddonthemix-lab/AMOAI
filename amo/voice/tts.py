@@ -74,7 +74,7 @@ def resolve_style(voice: str | None = None) -> VoiceStyle:
         style = PRESETS[name]
     elif name.startswith("say:"):
         style = VoiceStyle(PRESETS["default"].piper, (name[4:],))
-    elif re.match(r"^[a-z]{2}_[A-Z]{2}-", name):
+    elif re.match(r"^[a-z]{2}_[A-Z]{2}-", name):  # Piper voice, optionally "name:speaker"
         style = VoiceStyle(name, PRESETS["default"].say)
     else:
         style = PRESETS.get(settings.voice, PRESETS["default"])
@@ -92,8 +92,29 @@ def piper_dir() -> Path:
     return Path(settings.piper_voice).parent
 
 
+def split_speaker(voice_name: str) -> tuple[str, str | None]:
+    """'en_GB-semaine-medium:obadiah' → ('en_GB-semaine-medium', 'obadiah')."""
+    base, _, speaker = voice_name.partition(":")
+    return base, speaker or None
+
+
 def piper_path(voice_name: str) -> Path:
-    return piper_dir() / f"{voice_name}.onnx"
+    return piper_dir() / f"{split_speaker(voice_name)[0]}.onnx"
+
+
+def speaker_id(voice_name: str) -> int | None:
+    base, speaker = split_speaker(voice_name)
+    if speaker is None:
+        return None
+    if speaker.isdigit():
+        return int(speaker)
+    import json
+
+    meta = json.loads(Path(str(piper_path(base)) + ".json").read_text())
+    ids = meta.get("speaker_id_map") or {}
+    if speaker not in ids:
+        raise VoiceUnavailable(f"{base} has no speaker '{speaker}' (choose from: {', '.join(ids)})")
+    return ids[speaker]
 
 
 def piper_installed() -> bool:
@@ -106,6 +127,7 @@ def piper_installed() -> bool:
 
 def download_piper_voice(voice_name: str) -> Path:
     """Fetch a Piper voice (e.g. en_GB-alan-medium) from the official voice repo."""
+    voice_name = split_speaker(voice_name)[0]
     m = re.match(r"^(([a-z]{2})_[A-Z]{2})-(.+)-(x_low|low|medium|high)$", voice_name)
     if not m:
         raise ValueError(f"not a Piper voice name: {voice_name}")
@@ -146,17 +168,19 @@ def _piper_wav(text: str, style: VoiceStyle, speed: float) -> bytes:
         if voice is None:
             voice = _piper_cache[str(path)] = PiperVoice.load(str(path))
     length_scale = 1.0 / max(speed, 0.1)
+    sid = speaker_id(style.piper)
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wav:
         if hasattr(voice, "synthesize_wav"):  # piper-tts >= 1.3
             try:
                 from piper import SynthesisConfig
 
-                voice.synthesize_wav(text, wav, syn_config=SynthesisConfig(length_scale=length_scale))
+                cfg = SynthesisConfig(length_scale=length_scale, speaker_id=sid)
+                voice.synthesize_wav(text, wav, syn_config=cfg)
             except ImportError:
                 voice.synthesize_wav(text, wav)
         else:  # piper-tts 1.2
-            voice.synthesize(text, wav, length_scale=length_scale)
+            voice.synthesize(text, wav, length_scale=length_scale, speaker_id=sid)
     return buf.getvalue()
 
 

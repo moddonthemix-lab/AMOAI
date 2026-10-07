@@ -256,6 +256,24 @@ def cmd_voices(_a):
     for name, st in PRESETS.items():
         print(f"  {name:<15} pitch {st.pitch:+g}, robot {st.robot:g}, personality {st.personality}")
     print(f"\nEngine: {'Piper (neural voices)' if piper_installed() else 'built-in macOS voices'}")
+    if getattr(_a, "all", False):
+        import json
+
+        url = "https://huggingface.co/rhasspy/piper-voices/resolve/main/voices.json"
+        try:
+            with urllib.request.urlopen(url, timeout=30) as r:
+                catalog = json.load(r)
+        except Exception as e:  # noqa: BLE001
+            print(f"couldn't fetch the Piper catalog: {e}")
+            return
+        print("\nPiper English voices (amo try-voice NAME, then amo set-voice NAME --keep-personality):")
+        for name, v in sorted(catalog.items()):
+            if v["language"]["family"] != "en":
+                continue
+            speakers = v.get("speaker_id_map") or {}
+            extra = f"  speakers: {', '.join(list(speakers)[:8])}{' …' if len(speakers) > 8 else ''}" if len(speakers) > 1 else ""
+            print(f"  {name:<38} {v['language']['country_english']}{extra}")
+        print("\nMulti-speaker voices: add :speaker, e.g. en_GB-semaine-medium:obadiah")
     british = [v for v in mac_voices() if v in ("Daniel", "Oliver", "Arthur", "Kate", "Serena", "Stephanie", "Martha", "Jamie")]
     if british:
         print("British voices on this Mac: " + ", ".join(british))
@@ -392,7 +410,9 @@ def main(argv: list[str] | None = None) -> None:
     b.add_argument("models", nargs="*")
     b.set_defaults(fn=cmd_bench)
 
-    sub.add_parser("voices", help="list voice presets").set_defaults(fn=cmd_voices)
+    vs = sub.add_parser("voices", help="list voice presets")
+    vs.add_argument("--all", action="store_true", help="also list every Piper English voice")
+    vs.set_defaults(fn=cmd_voices)
     tv = sub.add_parser("try-voice", help="hear a voice")
     tv.add_argument("preset", nargs="?")
     tv.add_argument("text", nargs="*")

@@ -189,3 +189,18 @@ def test_computer_personality(db, llm, monkeypatch):
     out = Agent(db).chat([{"role": "user", "content": "add a daily goal: make one beat"}])
     assert out["content"].startswith("New daily goal: Make one beat.")
     assert any(out["content"].endswith(q) for q in COMPUTER_QUIPS)
+
+
+def test_piper_speaker_names(tmp_path, monkeypatch):
+    import json
+
+    from amo.config import settings
+    from amo.voice import tts
+
+    monkeypatch.setattr(settings, "piper_voice", str(tmp_path / "x.onnx"))
+    (tmp_path / "en_GB-semaine-medium.onnx.json").write_text(json.dumps({"speaker_id_map": {"prudence": 0, "obadiah": 2}}))
+    assert tts.split_speaker("en_GB-semaine-medium:obadiah") == ("en_GB-semaine-medium", "obadiah")
+    assert tts.piper_path("en_GB-semaine-medium:obadiah").name == "en_GB-semaine-medium.onnx"
+    assert tts.speaker_id("en_GB-semaine-medium:obadiah") == 2
+    assert tts.speaker_id("en_GB-semaine-medium:3") == 3
+    assert tts.speaker_id("en_GB-alan-medium") is None
