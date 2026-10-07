@@ -132,6 +132,14 @@ in `.env`; if it misses you, `2`. If Whisper keeps spelling the name differently
 written, instead of waiting for the whole thing, and always finishes what it's saying.
 (`AMO_STREAM_SPEECH=0` turns streaming off; `AMO_BARGE_IN=1` would let you cut it off mid-answer.)
 
+### AMO's face
+
+Open **http://localhost:8765/face** (also linked from the dashboard). Two glowing eyes and a mouth:
+blinks and glances around when idle, eyes widen when listening, look up with "…" while thinking,
+the mouth moves with the actual loudness of AMO's voice, and **every word appears one at a time as
+it's spoken**. Click to go full screen. Driven by whatever is speaking — AMO Listen on the Mac or a
+body device — so it's ready for the body's screen too.
+
 ### AMO speaks up on its own
 
 While AMO Listen (or a body device) is running, AMO talks without being asked — never during quiet

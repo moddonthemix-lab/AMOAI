@@ -73,6 +73,13 @@ class Brain:
         r.raise_for_status()
         return r.json().get("say", [])
 
+    def face(self, kind: str, data: dict[str, Any]) -> None:
+        """Tell the brain what AMO's face should show (best effort — never blocks speech)."""
+        try:
+            httpx.post(f"{self.url}/api/face/event", json={"kind": kind, **data}, headers=self.headers, timeout=3)
+        except httpx.HTTPError:
+            pass
+
     def converse(self, text: str, history: list[dict[str, str]]) -> Iterator[dict[str, Any]]:
         body = {"text": text, "history": history[:-1] if history and history[-1]["content"] == text else history}
         with httpx.stream("POST", f"{self.url}/api/converse", json=body, headers=self.headers,
@@ -83,9 +90,21 @@ class Brain:
                     yield json.loads(line)
 
 
+def face_say(brain: Brain):
+    """Word timing is worked out on the device; the brain stamps the start time on arrival."""
+    from ..face import say_event
+
+    def on_play(text: str, wav: bytes) -> None:
+        ev = say_event(text, wav, start_ms=0)
+        ev.pop("start", None)
+        threading.Thread(target=brain.face, args=("say", ev), daemon=True).start()
+
+    return on_play
+
+
 def make_respond(brain: Brain, mic: MicSegmenter, verbose: bool = False):
     def respond(history: list[dict[str, str]], command: str) -> tuple[str, str | None]:
-        speaker = SentenceSpeaker(synth=brain.speak, play=play_interruptible)
+        speaker = SentenceSpeaker(synth=brain.speak, play=play_interruptible, on_play=face_say(brain))
         result: dict[str, Any] = {"reply": ""}
 
         def stream() -> None:
@@ -139,9 +158,13 @@ def run(brain_url: str, key: str = "", verbose: bool = False) -> None:
     mic = MicSegmenter(sensitivity=settings.wake_sensitivity, meter=verbose)
     chime = chime_wav()
 
+    show = face_say(brain)
+
     def say(text: str) -> None:
         if text:
-            play_wav(brain.speak(text))
+            wav = brain.speak(text)
+            show(text, wav)
+            play_wav(wav)
         mic.flush()
 
     def ding() -> None:
@@ -175,6 +198,7 @@ def run(brain_url: str, key: str = "", verbose: bool = False) -> None:
         respond=make_respond(brain, mic, verbose),
         brief=brain.brief,
         announcements=brain.announcements,
+        on_state=lambda state: threading.Thread(target=brain.face, args=("state", {"state": state}), daemon=True).start(),
         verbose=verbose,
     )
     try:

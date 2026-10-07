@@ -252,6 +252,15 @@ MIGRATIONS: list[str] = [
     CREATE TRIGGER dv_watchlist_u AFTER UPDATE ON watchlist BEGIN UPDATE data_version SET v = v + 1; END;
     CREATE TRIGGER dv_watchlist_d AFTER DELETE ON watchlist BEGIN UPDATE data_version SET v = v + 1; END;
     """,
+    # 10 — what AMO's face should show (state changes and words being spoken, with timing)
+    """
+    CREATE TABLE face_events (
+        id INTEGER PRIMARY KEY,
+        kind TEXT NOT NULL,          -- state | say
+        data TEXT NOT NULL,          -- JSON
+        created_at TEXT NOT NULL
+    );
+    """,
 ]
 
 

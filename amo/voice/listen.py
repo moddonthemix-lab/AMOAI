@@ -140,6 +140,7 @@ class Listener:
     brief: Callable[[], str] | None = None  # morning brief text (a device asks the brain for it)
     announcements: Callable[[], list[str]] | None = None  # things AMO wants to say on its own
     wake_stream: Callable[[float | None], Iterator[Any]] | None = None  # streaming wake engine (vosk/oww)
+    on_state: Callable[[str], None] = lambda state: None  # idle | listening | thinking | asleep (the face)
     poll_seconds: float = 3.0
     _interrupted: str | None = None
     log: Callable[[str], None] = print
@@ -161,10 +162,12 @@ class Listener:
             return False
         if kind == "sleep":
             self.asleep = True
+            self.on_state("asleep")
             self.say("Going quiet. Say hey AMO, wake up, when you need me.")
             return False
         if kind == "wake":
             self.asleep = False
+            self.on_state("idle")
             self.say("I'm here.")
             return True
         if kind == "time":
@@ -187,6 +190,7 @@ class Listener:
 
         self.history.append({"role": "user", "content": command})
         self.log("   … thinking")
+        self.on_state("thinking")
         if self.respond is not None:
             try:
                 reply, self._interrupted = self.respond(self.history[-10:], command)
@@ -225,7 +229,10 @@ class Listener:
         while command:
             self.log(f"you: {command}")
             if not self.handle(command) or self.asleep:
+                if not self.asleep:
+                    self.on_state("idle")
                 return
+            self.on_state("listening")
             if self._interrupted is not None:  # cut off mid-answer
                 command, self._interrupted = self._interrupted, None
                 if command:
@@ -241,6 +248,7 @@ class Listener:
             seg = self.next_utterance(self.follow_up_seconds)
             if seg is None:
                 self.log('Listening. Say "Hey AMO" …')
+                self.on_state("idle")
                 return
             command = self.transcribe_command(seg)
             # Saying the wake phrase again in a follow-up is fine too.
@@ -260,6 +268,7 @@ class Listener:
         if self.asleep:
             if quick_command(rest) == "wake":
                 self.asleep = False
+                self.on_state("idle")
                 self.say("I'm here.")
             return
         if len(rest.split()) >= 2:
@@ -269,10 +278,12 @@ class Listener:
             command = rest2 if woke2 and rest2 else rest
         else:
             self.chime()
+            self.on_state("listening")
             self.log("🎙  Yes? Say your request…")
             seg2 = self.next_utterance(8.0)
             if seg2 is None:
                 self.log('   (didn\'t hear a request) Listening. Say "Hey AMO" …')
+                self.on_state("idle")
                 return
             command = self.transcribe_command(seg2)
         self.converse(command)
@@ -293,6 +304,7 @@ class Listener:
 
     def run(self) -> None:
         self.log('Listening. Say "Hey AMO" … (Ctrl+C to quit)')
+        self.on_state("idle")
         idle = self.wake_stream or self.segments  # what to listen with while waiting for "Hey AMO"
         if self.announcements is None:
             for seg in idle(None):
@@ -440,9 +452,13 @@ def run(verbose: bool = False) -> None:
     agent = Agent()
     chime = chime_wav()
 
+    from .. import face
+
     def say(text: str) -> None:
         if text:
-            play_wav(synthesize(text))
+            wav = synthesize(text)
+            face.publish_say(text, wav)
+            play_wav(wav)
         mic.flush()
 
     def ding() -> None:
@@ -470,7 +486,7 @@ def run(verbose: bool = False) -> None:
     def respond(history: list[dict[str, str]], command: str) -> tuple[str, str | None]:
         """Speak while thinking: "Got it" right away, then each sentence as soon as it's written.
         Keeps an ear open while talking so you can cut AMO off ("AMO, stop")."""
-        speaker = SentenceSpeaker(synth=synthesize)
+        speaker = SentenceSpeaker(synth=synthesize, on_play=face.publish_say)
         phrase = acks.pick(command)
         if phrase:
             try:
@@ -553,6 +569,7 @@ def run(verbose: bool = False) -> None:
         wait=wait,
         respond=respond if settings.stream_speech else None,
         announcements=take_pending,
+        on_state=face.publish_state,
         verbose=verbose,
     )
     if verbose:

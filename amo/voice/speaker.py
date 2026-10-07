@@ -55,8 +55,10 @@ def play_interruptible(wav: bytes, stop: threading.Event) -> bool:
 
 
 class SentenceSpeaker:
-    def __init__(self, synth: Callable[[str], bytes], play: Callable[[bytes, threading.Event], bool] = play_interruptible):
+    def __init__(self, synth: Callable[[str], bytes], play: Callable[[bytes, threading.Event], bool] = play_interruptible,
+                 on_play: Callable[[str, bytes], None] | None = None):
         self.synth, self.play = synth, play
+        self.on_play = on_play  # called just before each sentence plays (AMO's face shows it)
         self._buf = ""
         self._texts: queue.Queue = queue.Queue()   # sentences (str) or pre-made audio (bytes); None = end
         self._audio: queue.Queue = queue.Queue()
@@ -116,7 +118,7 @@ class SentenceSpeaker:
                 continue
             self.spoken.append(item)  # known before it's heard, so its echo is never mistaken for you
             try:
-                self._audio.put((self.synth(item), ""))
+                self._audio.put((self.synth(item), item))
             except Exception:  # noqa: BLE001 — skip a sentence rather than go silent
                 continue
 
@@ -126,7 +128,12 @@ class SentenceSpeaker:
                 item = self._audio.get()
                 if item is None or self.stopped.is_set():
                     return
-                wav, _label = item
+                wav, label = item
+                if self.on_play and label:
+                    try:
+                        self.on_play(label, wav)
+                    except Exception:  # noqa: BLE001 — the face must never break voice
+                        pass
                 self._playing = True
                 self.started.set()
                 finished = self.play(wav, self.stopped)

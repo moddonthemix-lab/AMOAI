@@ -314,6 +314,44 @@ def announcements_next():
     return {"say": take_pending(get_db())}
 
 
+# ======================================================== AMO's face
+@app.get("/face", include_in_schema=False)
+def face_page():
+    return FileResponse(STATIC / "face.html")
+
+
+@app.get("/api/face/events", dependencies=[Depends(auth)])
+def face_events(after: int = -1):
+    """New face events since `after` (-1 = just tell me where we are). `now` lets the page sync
+    its clock with the speaker's."""
+    from .. import face
+
+    if after < 0:
+        return {"events": [], "last": face.latest_id(get_db()), "now": int(time.time() * 1000)}
+    events = face.events_after(after, get_db())
+    return {"events": events, "last": events[-1]["id"] if events else after, "now": int(time.time() * 1000)}
+
+
+class FaceEvent(BaseModel):
+    kind: Literal["state", "say"]
+    model_config = {"extra": "allow"}
+
+
+@app.post("/api/face/event", dependencies=[Depends(auth)])
+def face_event(ev: FaceEvent):
+    """From a body device: a state change, or a sentence it is starting to say now."""
+    from .. import face
+
+    data = ev.model_dump()
+    kind = data.pop("kind")
+    if kind == "say":
+        data["start"] = int(time.time() * 1000) + int(data.pop("delay_ms", 0) or 0)
+    else:
+        data["at"] = int(time.time() * 1000)
+    face._publish(kind, data, get_db())
+    return {"ok": True}
+
+
 # ======================================================== native chat
 class AskRequest(BaseModel):
     message: str
