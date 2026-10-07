@@ -290,12 +290,52 @@ def resale_summary(period: str = "month"):
       emotion=("string", "calm, FOMO, revenge, confident…", False),
       notes=("string", "", False))
 def log_trade(symbol: str, side: str, entry: float, **kw):
-    tj = TradingJournal(get_db())
+    from . import coach
+
+    db = get_db()
+    tj = TradingJournal(db)
     exit_price = kw.pop("exit", None)
     t = tj.open_trade(symbol, side, entry, **kw)
+    # The coach checks it against your rules and The Strat, and remembers whether it was
+    # taken with continuity (for your reviews).
+    check = coach.check_trade(symbol, t["side"], entry, kw.get("stop"), kw.get("target"), db=db,
+                              exclude_trade_id=t["id"])
+    note = coach.summary(check, symbol, t["side"], planned=False)
+    update = {"coach_notes": note or None}
+    if check.with_continuity is not None:
+        update["with_continuity"] = int(check.with_continuity)
+    if kw.get("followed_rules") is None and any("rule" in i for i in check.issues):
+        update["followed_rules"] = 0
+    db.update("trades", t["id"], update)
     if exit_price is not None:
         t = tj.close_trade(t["id"], exit_price)
+    t = tj.get(t["id"])
+    t["coach"] = note
     return t
+
+
+@tool("Pre-trade check: is a planned trade with The Strat's continuity, and does it follow the user's "
+      "own trading rules (time of day, max trades, stop, risk:reward)? Use for 'should I go long X?'.",
+      symbol=("string", "Ticker or name.", True),
+      side=("enum:long|short", "Direction.", True),
+      entry=("number", "Planned entry.", False), stop=("number", "Planned stop.", False),
+      target=("number", "Planned target.", False))
+def check_trade(symbol: str, side: str, entry: float | None = None, stop: float | None = None,
+                target: float | None = None):
+    from . import coach
+
+    c = coach.check_trade(symbol, side, entry, stop, target, db=get_db(), planned=True)
+    text = coach.summary(c, symbol, side, planned=True)
+    return {"verdict": c.verdict, "issues": c.issues, "good": c.good, "rr": c.rr, "text": text, "spoken": text}
+
+
+@tool("Review trading performance like a coach: P&L, win rate, with vs against continuity, cost of "
+      "rule breaks, best/worst setup, one lesson.",
+      period=("enum:today|week|month|year", "Default week.", False))
+def trading_review(period: str = "week"):
+    from . import coach
+
+    return coach.review(period, get_db())
 
 
 @tool("Close an open trade.",
@@ -572,9 +612,11 @@ GROUPS: dict[str, tuple[list[str], str]] = {
         r"mercari|depop|poshmark|sneaker|shoe|jordan|\bdunk|yeezy|\bitem|margin|\broi\b",
     ),
     "trading": (
-        ["log_trade", "close_trade", "open_positions", "trading_stats", "trading_rules", "add_trading_rule"],
+        ["log_trade", "close_trade", "open_positions", "trading_stats", "trading_rules", "add_trading_rule",
+         "check_trade", "trading_review"],
         r"trad(e|es|ing)|\blong\b|\bshort\b|\bstop\b|entry|\bexit|p&l|\bpnl|position|\brules?\b|setup|"
-        r"futures|options|\bcalls?\b|\bputs?\b|\bes\b|\bnq\b|\bmnq\b|\bspy\b|\bqqq\b|ticker|win ?rate|contracts?",
+        r"futures|options|\bcalls?\b|\bputs?\b|\bes\b|\bnq\b|\bmnq\b|\bspy\b|\bqqq\b|ticker|win ?rate|contracts?|"
+        r"should i|thinking (of|about)|\bbuy(ing)?\b|\bsell(ing)?\b|review",
     ),
     "goals": (
         ["add_goal", "check_in_goal", "list_goals"],

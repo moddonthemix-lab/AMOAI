@@ -415,6 +415,19 @@ def _plan(a: dict[str, Any], frames: dict[str, Timeframe], fmt) -> str:
     return text
 
 
+def short_reason(a: dict[str, Any]) -> str:
+    """Why the bias is what it is, in a few words."""
+    if a["continuity"]["ftfc"]:
+        return "full timeframe continuity"
+    if "override" in a["why"]:
+        side = "above" if "bull" in a["bias"] else "below"
+        return f"daily and hourly trading {side} their opens"
+    if a["bias"] == "neutral":
+        return "timeframes split"
+    n = len(a["continuity"]["up" if "bull" in a["bias"] else "down"])
+    return f"{n} of {len(a['timeframes'])} timeframes {'above' if 'bull' in a['bias'] else 'below'} their opens"
+
+
 def spoken_summary(a: dict[str, Any]) -> str:
     """Two or three sentences for voice."""
     fmt = _fmt_factory(a["price"])

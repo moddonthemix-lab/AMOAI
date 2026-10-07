@@ -97,10 +97,11 @@ def _sold(r: dict, a: dict) -> str:
 
 
 def _trade(r: dict, a: dict) -> str:
+    coach = f" {r['coach']}" if r.get("coach") else ""
     if r.get("exit") is not None:
-        return _closed(r, a)
+        return _closed(r, a) + coach
     stop = f", stop {r['stop']:g}" if r.get("stop") is not None else ""
-    return f"Logged {r.get('side')} {r.get('symbol')} at {r.get('entry'):g}{stop} (trade #{r.get('id')})."
+    return f"Logged {r.get('side')} {r.get('symbol')} at {r.get('entry'):g}{stop} (trade #{r.get('id')}).{coach}"
 
 
 def _closed(r: dict, a: dict) -> str:

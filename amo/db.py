@@ -261,6 +261,11 @@ MIGRATIONS: list[str] = [
         created_at TEXT NOT NULL
     );
     """,
+    # 11 — trading coach: was the trade with timeframe continuity, and what the coach said
+    """
+    ALTER TABLE trades ADD COLUMN with_continuity INTEGER;
+    ALTER TABLE trades ADD COLUMN coach_notes TEXT;
+    """,
 ]
 
 

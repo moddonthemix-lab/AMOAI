@@ -58,6 +58,15 @@ futures (NQ, ES, CL, GC…) and crypto (BTC, ETH):
   last bar's high/low), target (the previous range), stop, risk:reward, triggered or waiting
 - **AMO's take**: an A/B/C grade for the best setup in the direction of continuity, or "stand aside"
 
+**Trading coach.** Log a trade ("short NQ at 18000, stop 18020") and AMO checks it against your own
+rules and the Strat read on the spot: *"⚠ against continuity — NQ is bullish; ⚠ breaks your rule 'No
+trades in the first 5 minutes' (it's 9:32)."* Ask first — *"Should I go long Amazon at 256 with a stop
+at 251 and a target of 268?"* — for a pre-trade checklist (continuity, best setup, risk:reward,
+your rules). *"How's my trading this week?"* reviews P&L, win rate, results with vs against
+continuity, what rule breaks cost you, best/worst setup and one lesson. Rules it checks
+automatically: first-N-minutes, no trades before/after a time, max trades per day, always use a
+stop, minimum risk:reward, only with continuity — anything else it reminds you of.
+
 Rules follow thestrat.ai's *3 Universal Truths* and thestrat-indicators.com. Every number is
 calculated — never guessed by the AI. The **Charts** tab on the dashboard draws the candles with
 their Strat numbers, key levels, continuity badges and the full thesis. Not financial advice.

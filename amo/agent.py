@@ -158,14 +158,14 @@ class Agent:
             elif name == "delete_record" and "error" in result:
                 content = result["error"]  # "couldn't find…" / "which one?" — ask straight away
             elif name in ("strat_analysis", "strat_compare", "show_chart", "watchlist_show",
-                          "watchlist_scan") and "error" not in result:
+                          "watchlist_scan", "check_trade", "trading_review") and "error" not in result:
                 trace.append({"name": name, "arguments": args, "result": result})
                 voice = channel == "voice"
                 content = (result.get("summary" if voice else "thesis")
                            or result.get("spoken" if voice else "text")
                            or f"The {result.get('symbol')} chart is up on your dashboard.")
             elif name in ("strat_analysis", "strat_compare", "show_chart", "watchlist_add",
-                          "watchlist_remove", "watchlist_show", "watchlist_scan"):
+                          "watchlist_remove", "watchlist_show", "watchlist_scan", "check_trade", "trading_review"):
                 content = result.get("error", "")
         if not content:  # no shortcut, or it failed: let the model handle it
             content = self._tool_loop(llm, convo, schemas, model, trace)
@@ -219,7 +219,8 @@ class Agent:
             for t in round_trace:
                 if t["name"] == "strat_analysis" and "thesis" in t["result"]:
                     return t["result"]["summary" if self._channel == "voice" else "thesis"]
-                if t["name"] in ("strat_compare", "watchlist_scan", "watchlist_show") and "text" in t["result"]:
+                if t["name"] in ("strat_compare", "watchlist_scan", "watchlist_show", "check_trade",
+                                 "trading_review") and "text" in t["result"]:
                     return t["result"]["spoken" if self._channel == "voice" else "text"]
         # Ran out of tool rounds: ask for a final answer without tools.
         return llm.chat(convo + [{"role": "user", "content": "Summarize what you did."}],

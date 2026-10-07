@@ -153,8 +153,45 @@ def _watch_match(t: str) -> tuple[str, dict[str, Any]] | None:
     return None
 
 
+_NUM = r"\$?([\d,]+(?:\.\d+)?)"
+CHECK_RE = re.compile(
+    _LEAD + r"(?:should i|can i|is it (?:a )?good (?:time )?to|i'?m thinking (?:of|about)|thinking (?:of|about)|"
+    r"i want to|i'?m about to|about to)\s+(?:go(?:ing)?\s+)?"
+    r"(?P<side>long|short|buy(?:ing)?|sell(?:ing)?|short(?:ing)?)\s+(?:on\s+|in\s+|some\s+)?"
+    r"(?P<sym>(?:(?!(?:at|with|stop|target|around|here|now|today|right)\b)[A-Za-z&.\-]+\s*){1,3}?)"
+    r"(?=\s*(?:at\b|@|with\b|around\b|here\b|now\b|today\b|right\b|,|$|[?.!]))"
+    r"(?:\s*(?:at|@|around)\s+" + _NUM + r")?(?:.*?\bstop\s+(?:at\s+)?" + _NUM + r")?"
+    r"(?:.*?\btarget\s+(?:at\s+|of\s+)?" + _NUM + r")?(?:\s*(?:right\s+)?(?:here|now|today))?[?.!]*$", re.I)
+REVIEW_RE = re.compile(
+    _LEAD + r"(?:how'?s|how is|how was|how did|how am i doing (?:with|on)|review|give me a review of|run a review of)\s+"
+    r"(?:i\s+)?(?:my\s+)?(?:trading|trades|trade)(?:\s+(?:this|for the|so far this)?\s*(?P<period>today|week|month|year))?"
+    r"(?:\s+(?:going|looking|doing|been))?[?.!]*$|" + _LEAD + r"trading review(?:\s+(?:for\s+)?(?:this\s+)?"
+    r"(?P<period2>today|week|month|year))?[?.!]*$", re.I)
+
+
+def _check_match(t: str) -> tuple[str, dict[str, Any]] | None:
+    m = CHECK_RE.match(_clean_sentence(t).replace(" at the ", " at "))
+    if not m:
+        return None
+    syms = _tickers(m.group("sym"), t + " stock")
+    if not syms:
+        return None
+    side = "short" if m.group("side").lower().startswith(("sell", "short")) else "long"
+    args: dict[str, Any] = {"symbol": syms[0], "side": side}
+    for i, name in ((3, "entry"), (4, "stop"), (5, "target")):
+        if m.group(i):
+            args[name] = float(m.group(i).replace(",", ""))
+    return "check_trade", args
+
+
 def match(text: str) -> tuple[str, dict[str, Any]] | None:
     t = text.strip()
+    rv = REVIEW_RE.match(_clean_sentence(t))
+    if rv:
+        return "trading_review", {"period": (rv.group("period") or rv.group("period2") or "week").lower()}
+    ck = _check_match(t)
+    if ck:
+        return ck
     wl = _watch_match(t)
     if wl:
         return wl
