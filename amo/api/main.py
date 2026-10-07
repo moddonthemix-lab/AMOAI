@@ -306,6 +306,14 @@ def converse(req: ConverseRequest):
     return StreamingResponse(stream(), media_type="application/x-ndjson")
 
 
+@app.get("/api/announcements/next", dependencies=[Depends(auth)])
+def announcements_next():
+    """Things AMO wants to say on its own, for a body device to speak (marked as spoken)."""
+    from ..proactive import take_pending
+
+    return {"say": take_pending(get_db())}
+
+
 # ======================================================== native chat
 class AskRequest(BaseModel):
     message: str

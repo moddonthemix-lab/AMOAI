@@ -143,6 +143,11 @@ ENTITIES: dict[str, Entity] = {e.kind: e for e in [
     Entity("rules", "trading rule", "Trading rules", "trading_rules", (
         Field("rule", "Rule", required=True),
     ), ("rule",), order="id", where="active = 1"),
+    Entity("watchlist", "ticker", "Watchlist", "watchlist", (
+        Field("symbol", "Ticker", required=True),
+        Field("note", "Note"),
+        Field("alerts", "Spoken alerts", "bool"),
+    ), ("symbol", "note"), order="id"),
     Entity("cravvr", "Cravvr task", "Cravvr", "cravvr_tasks", (
         Field("title", "Task", required=True),
         Field("status", "Status", "select", ("todo", "doing", "done")),
@@ -162,7 +167,7 @@ KIND_ALIASES = {
     "goal": "goals", "client": "clients", "session": "sessions", "booking": "sessions",
     "payment": "payments", "item": "resale", "resale item": "resale", "inventory": "resale",
     "product": "resale", "trade": "trades", "rule": "rules", "trading rule": "rules",
-    "task": "cravvr", "cravvr task": "cravvr", "memory": "memories", "note": "memories", "fact": "memories",
+    "task": "cravvr", "cravvr task": "cravvr", "ticker": "watchlist", "watch list": "watchlist", "memory": "memories", "note": "memories", "fact": "memories",
 }
 
 
@@ -223,6 +228,10 @@ def _clean(db: Database, ent: Entity, data: dict[str, Any], partial: bool) -> di
         raise ValueError(f"a {ent.label} has no field {', '.join(unknown)} "
                          f"(fields: {', '.join(fields)})")
     out = {k: _coerce(db, fields[k], v) for k, v in data.items()}
+    if ent.kind == "watchlist" and out.get("symbol"):
+        from .market import normalize
+
+        out["symbol"] = normalize(out["symbol"])
     if not partial:
         missing = [f.label for f in ent.fields if f.required and out.get(f.key) is None]
         if missing:

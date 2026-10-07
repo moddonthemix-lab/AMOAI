@@ -230,6 +230,28 @@ MIGRATIONS: list[str] = [
     CREATE TRIGGER dv_reflections_U AFTER UPDATE ON reflections BEGIN UPDATE data_version SET v = v + 1; END;
     CREATE TRIGGER dv_reflections_D AFTER DELETE ON reflections BEGIN UPDATE data_version SET v = v + 1; END;
     """,
+    # 9 — watchlist (Strat alerts) and things AMO wants to say out loud on its own
+    """
+    CREATE TABLE watchlist (
+        id INTEGER PRIMARY KEY,
+        symbol TEXT NOT NULL,
+        note TEXT,
+        alerts INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE announcements (
+        id INTEGER PRIMARY KEY,
+        text TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'info',          -- alert|reminder|brief|checkin|info
+        key TEXT UNIQUE,                            -- de-duplication (same alert never twice)
+        created_at TEXT NOT NULL,
+        expires_at TEXT,
+        spoken_at TEXT
+    );
+    CREATE TRIGGER dv_watchlist_i AFTER INSERT ON watchlist BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_watchlist_u AFTER UPDATE ON watchlist BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_watchlist_d AFTER DELETE ON watchlist BEGIN UPDATE data_version SET v = v + 1; END;
+    """,
 ]
 
 

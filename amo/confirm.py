@@ -134,6 +134,13 @@ CONFIRM: dict[str, Callable[[dict, dict], str]] = {
     "add_cravvr_task": lambda r, a: f"Added Cravvr task: {r.get('title')}.",
     "update_cravvr_task": lambda r, a: f"Cravvr task “{r.get('title')}” is now {r.get('status')}.",
     "send_notification": lambda r, a: "Sent.",
+    "watchlist_add": lambda r, a: (
+        (f"Watching {', '.join(r['added'])}. " if r["added"] else "")
+        + (f"Already watching {', '.join(r['already'])}. " if r["already"] else "")
+        + (f"Couldn't find {', '.join(r['not_found'])}. " if r["not_found"] else "")
+        + "I'll speak up when a setup triggers with continuity.").strip(),
+    "watchlist_remove": lambda r, a: (f"Stopped watching {', '.join(r['removed'])}." if r["removed"]
+                                      else "That wasn't on your watchlist."),
     "delete_record": lambda r, a: f"Deleted {r['label']} “{r['name']}”.",
     "delete_all_records": lambda r, a: (f"Deleted {r['deleted']} {r['what']}: " + ", ".join(r["names"][:8]) + "."
                                         if r["deleted"] else f"You don't have any {r['what']} to delete."),

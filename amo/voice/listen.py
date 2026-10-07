@@ -138,6 +138,8 @@ class Listener:
     # interruption is what the user said when they cut AMO off ("" = just "stop").
     respond: Callable[[list[dict[str, str]], str], tuple[str, str | None]] | None = None
     brief: Callable[[], str] | None = None  # morning brief text (a device asks the brain for it)
+    announcements: Callable[[], list[str]] | None = None  # things AMO wants to say on its own
+    poll_seconds: float = 3.0
     _interrupted: str | None = None
     log: Callable[[str], None] = print
     verbose: bool = False
@@ -274,10 +276,30 @@ class Listener:
             command = self.transcribe_command(seg2)
         self.converse(command)
 
+    def speak_announcements(self) -> None:
+        """Say anything AMO queued up on its own (alerts, reminders, brief) — not while asleep."""
+        if self.asleep or self.announcements is None:
+            return
+        try:
+            items = self.announcements()
+        except Exception as e:  # noqa: BLE001 — never let this kill the listener
+            self.log(f"   (couldn't check announcements: {e})")
+            return
+        for text in items:
+            self.chime()
+            self.log(f"📣 AMO: {text}")
+            self.say(text)
+
     def run(self) -> None:
         self.log('Listening. Say "Hey AMO" … (Ctrl+C to quit)')
-        for seg in self.segments(None):
-            self.step(seg)
+        if self.announcements is None:
+            for seg in self.segments(None):
+                self.step(seg)
+            return
+        while True:  # listen in short windows so AMO can speak up between them
+            for seg in self.segments(self.poll_seconds):
+                self.step(seg)
+            self.speak_announcements()
 
 
 # ------------------------------------------------------------------ real audio
@@ -402,6 +424,7 @@ def chime_wav() -> bytes:
 
 def run(verbose: bool = False) -> None:
     from ..agent import Agent
+    from ..proactive import take_pending
     from . import acks
     from .loop import play_wav
     from .stt import VoiceUnavailable, transcribe_array
@@ -510,6 +533,7 @@ def run(verbose: bool = False) -> None:
         ack=ack,
         wait=wait,
         respond=respond if settings.stream_speech else None,
+        announcements=take_pending,
         verbose=verbose,
     )
     if verbose:

@@ -134,6 +134,19 @@ written, instead of waiting for the whole thing. **Interrupt any time:** say "AM
 AMO ignores its own voice coming back through the speaker. Turn off with `AMO_STREAM_SPEECH=0`
 or `AMO_BARGE_IN=0`.
 
+### AMO speaks up on its own
+
+While AMO Listen (or a body device) is running, AMO talks without being asked — never during quiet
+hours (`AMO_QUIET_HOURS=22-8`):
+- **Strat watchlist** — "add Amazon and Tesla to my watchlist", "how's my watchlist looking?".
+  During market hours AMO checks every 15 minutes and says *"Heads up: AMZN just triggered the
+  weekly 2D-2U reversal above 253.56, with continuity…"* (each alert once). Crypto 24/7.
+- **Studio** — a heads-up 15 minutes before a session, unpaid balances at the end of the day,
+  clients who've gone quiet on Monday mornings.
+- **Daily rhythm** — the morning brief out loud, an evening check-in on your goals
+  (`AMO_CHECKIN_HOUR=21`).
+Everything also lands in the dashboard's notifications. Turn it all off with `AMO_PROACTIVE=0`.
+
 ### AMO's body (Raspberry Pi or any computer on your Wi-Fi)
 
 The body is just ears and a mouth — the thinking stays on your Mac (the brain).

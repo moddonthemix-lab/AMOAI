@@ -398,7 +398,7 @@ def send_notification(title: str, body: str = "", level: str = "info"):
 
 
 # ---------------------------------------------------------------- edit / delete anything
-_KINDS = "enum:goals|clients|sessions|payments|resale|trades|rules|cravvr|memories"
+_KINDS = "enum:goals|clients|sessions|payments|resale|trades|rules|watchlist|cravvr|memories"
 
 
 @tool("Find items of any kind (goals, clients, sessions, payments, resale inventory, trades, "
@@ -514,6 +514,46 @@ def quote(symbol: str):
             "currency": meta.get("currency")}
 
 
+# ---------------------------------------------------------------- watchlist (Strat alerts)
+@tool("Add tickers to the watchlist. AMO watches them during market hours and speaks up when a "
+      "Strat setup triggers with continuity.",
+      symbols=("string", "Tickers or names, comma separated, e.g. 'AMZN, Tesla'.", True))
+def watchlist_add(symbols: str):
+    from .proactive import add_to_watchlist
+
+    return add_to_watchlist([x for x in re.split(r",|\band\b|&|/", symbols) if x.strip()], get_db())
+
+
+@tool("Remove tickers from the watchlist.",
+      symbols=("string", "Tickers or names, comma separated.", True))
+def watchlist_remove(symbols: str):
+    from .proactive import remove_from_watchlist
+
+    return remove_from_watchlist([x.strip() for x in re.split(r",|\band\b|&|/", symbols) if x.strip()], get_db())
+
+
+@tool("Show what's on the watchlist.")
+def watchlist_show():
+    from .proactive import watchlist_symbols
+
+    syms = watchlist_symbols(get_db())
+    text = ("Your watchlist: " + ", ".join(syms) + ".") if syms else \
+        "Your watchlist is empty — say “add Amazon to my watchlist”."
+    return {"symbols": syms, "text": text, "spoken": text}
+
+
+@tool("Read every ticker on the watchlist with The Strat and pick the best setup.")
+def watchlist_scan():
+    from . import strat
+    from .proactive import watchlist_symbols
+
+    syms = watchlist_symbols(get_db())
+    if not syms:
+        text = "Your watchlist is empty — say “add Amazon to my watchlist”."
+        return {"text": text, "spoken": text}
+    return strat.compare(syms)
+
+
 # ---------------------------------------------------------------- routing
 # Sending all ~34 tool definitions costs ~4k prompt tokens per message, which is slow on a
 # CPU-only machine. Each message only gets the tool groups it plausibly needs.
@@ -555,11 +595,12 @@ GROUPS: dict[str, tuple[list[str], str]] = {
         r"switch|instead|correct|mistake|undo|show (me )?(my|all)|list (my|all)",
     ),
     "markets": (
-        ["strat_analysis", "strat_compare", "show_chart", "quote"],
+        ["strat_analysis", "strat_compare", "show_chart", "quote", "watchlist_add", "watchlist_remove",
+         "watchlist_show", "watchlist_scan"],
         r"\bstrat\b|thesis|chart|candle|continuity|ftfc|inside bar|2-1-2|3-1-2|setup|levels?\b|"
         r"price of|stock|ticker|\bspy\b|\bqqq\b|\bnq\b|\bes\b|futures|crypto|bitcoin|\bbtc\b|nasdaq|"
         r"s&p|market|daily|weekly|monthly|input on|take on|thoughts on|how does .* look|setups?\b|amazon|tesla|"
-        r"apple|nvidia|microsoft|google|meta|netflix",
+        r"apple|nvidia|microsoft|google|meta|netflix|watch ?list|\bwatch\b",
     ),
     "web": (
         ["web_search", "read_webpage"],

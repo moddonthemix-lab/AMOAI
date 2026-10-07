@@ -120,8 +120,44 @@ def _tickers(raw: str, sentence: str) -> list[str]:
     return out
 
 
+_WL = r"(?:my\s+|the\s+)?watch\s?list"
+WATCH_ADD_RE = re.compile(_LEAD + r"(?:add|put)\s+(?P<list>.+?)\s+(?:to|on|onto)\s+" + _WL + r"$", re.I)
+WATCH_VERB_RE = re.compile(_LEAD + r"(?:watch|keep an eye on|track|monitor)\s+(?P<list>.+?)$", re.I)
+WATCH_REMOVE_RE = re.compile(
+    _LEAD + r"(?:remove|delete|take|drop|stop watching)\s+(?P<list>.+?)(?:\s+(?:from|off)\s+" + _WL + r")?$", re.I)
+WATCH_SHOW_RE = re.compile(_LEAD + r"(?:what'?s|what is|show(?: me)?|list|read(?: me)?)\s+(?:on\s+)?" + _WL + r"$", re.I)
+WATCH_SCAN_RE = re.compile(
+    _LEAD + r"(?:how'?s|how is|scan|check|run|any setups on|what'?s setting up on)\s+" + _WL
+    + r"(?:\s+(?:looking|doing))?$", re.I)
+
+
+def _watch_match(t: str) -> tuple[str, dict[str, Any]] | None:
+    d = _clean_sentence(t)
+    if WATCH_SHOW_RE.match(d):
+        return "watchlist_show", {}
+    if WATCH_SCAN_RE.match(d):
+        return "watchlist_scan", {}
+    m = WATCH_ADD_RE.match(d)
+    if m:
+        syms = _tickers(m.group("list"), d + " stock")
+        return ("watchlist_add", {"symbols": ", ".join(syms)}) if syms else None
+    if re.search(r"watch\s?list", d, re.I) or d.lower().startswith("stop watching"):
+        m = WATCH_REMOVE_RE.match(d)
+        if m:
+            syms = _tickers(m.group("list"), d + " stock")
+            return ("watchlist_remove", {"symbols": ", ".join(syms)}) if syms else None
+    m = WATCH_VERB_RE.match(d)
+    if m:  # "watch Tesla" — only real tickers/companies, so "watch the game" isn't a stock
+        syms = _tickers(m.group("list"), "")
+        return ("watchlist_add", {"symbols": ", ".join(syms)}) if syms else None
+    return None
+
+
 def match(text: str) -> tuple[str, dict[str, Any]] | None:
     t = text.strip()
+    wl = _watch_match(t)
+    if wl:
+        return wl
     for rx in (TAKE_RE, THINK_RE, LOOK_RE, SETUPS_RE):
         m = rx.match(t)
         if m:

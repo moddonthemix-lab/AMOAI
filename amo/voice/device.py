@@ -68,6 +68,11 @@ class Brain:
         r.raise_for_status()
         return r.json()["text"]
 
+    def announcements(self) -> list[str]:
+        r = httpx.get(f"{self.url}/api/announcements/next", headers=self.headers, timeout=15)
+        r.raise_for_status()
+        return r.json().get("say", [])
+
     def converse(self, text: str, history: list[dict[str, str]]) -> Iterator[dict[str, Any]]:
         body = {"text": text, "history": history[:-1] if history and history[-1]["content"] == text else history}
         with httpx.stream("POST", f"{self.url}/api/converse", json=body, headers=self.headers,
@@ -152,6 +157,7 @@ def run(brain_url: str, key: str = "", verbose: bool = False) -> None:
         chime=ding,
         respond=make_respond(brain, mic, verbose),
         brief=brain.brief,
+        announcements=brain.announcements,
         verbose=verbose,
     )
     try:

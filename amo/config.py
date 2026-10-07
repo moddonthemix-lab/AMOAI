@@ -77,6 +77,12 @@ class Settings:
     ack_still: str = field(default_factory=lambda: _env("AMO_ACK_STILL", "Still working on it.|Almost there."))
     ack_still_after: float = field(default_factory=lambda: float(_env("AMO_ACK_STILL_AFTER", "7")))
 
+    # AMO speaking up on its own (watchlist alerts, session heads-ups, brief, check-in),
+    # never inside quiet hours (e.g. "22-8" = 10pm–8am). Evening check-in hour (24h).
+    proactive: bool = field(default_factory=lambda: _env("AMO_PROACTIVE", "1") not in ("0", "false", "no"))
+    quiet_hours: str = field(default_factory=lambda: _env("AMO_QUIET_HOURS", "22-8"))
+    checkin_hour: int = field(default_factory=lambda: int(_env("AMO_CHECKIN_HOUR", "21")))
+
     # Speak while thinking (voice starts on the first finished sentence) and let you interrupt
     # AMO mid-answer ("AMO, stop", "hold on", "never mind").
     stream_speech: bool = field(default_factory=lambda: _env("AMO_STREAM_SPEECH", "1") not in ("0", "false", "no"))

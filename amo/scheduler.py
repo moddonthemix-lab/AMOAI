@@ -98,6 +98,10 @@ def tick(db: Database, now: datetime | None = None) -> list[str]:
         except (LLMError, ValueError) as e:
             log.warning("learning skipped: %s", e)
 
+    from .proactive import run_jobs
+
+    ran += run_jobs(db, now)
+
     week_key = f"{now.isocalendar()[0]}-W{now.isocalendar()[1]}"
     if (now.weekday() == REFLECTION_WEEKDAY and now.hour >= REFLECTION_HOUR
             and db.get_kv("last_reflection") != week_key):
