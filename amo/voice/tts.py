@@ -61,14 +61,19 @@ def _macos_say(text: str) -> bytes:
 
 
 def synthesize(text: str) -> bytes:
-    """Return WAV bytes for `text`."""
+    """Return WAV bytes for `text`. On a Mac, falls back to the built-in voice if Piper
+    isn't available (e.g. no Piper build for Intel Macs)."""
     text = clean_for_speech(text)
     try:
-        voice = _load_voice()
+        return _piper(text)
     except VoiceUnavailable:
         if sys.platform == "darwin" and shutil.which("say"):
             return _macos_say(text)
         raise
+
+
+def _piper(text: str) -> bytes:
+    voice = _load_voice()
     if voice == "cli":
         exe = shutil.which("piper")
         if not exe:

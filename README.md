@@ -44,8 +44,9 @@ trading, reselling, notifications, and a quick "ask AMO" box.
 
 ## Setup (Mac)
 
-Ollama runs **natively** on macOS so the models use your Apple Silicon GPU (Docker on a Mac
-can't use the GPU, so don't run Ollama in Docker).
+Works on Apple Silicon and Intel Macs (macOS 14 Sonoma or newer). Ollama runs **natively** so models
+use the Apple Silicon GPU (Docker on a Mac can't use the GPU). Intel Macs run models on the CPU, so
+setup picks a smaller, faster model there.
 
 ### Option A — one command (recommended)
 
@@ -54,8 +55,8 @@ git clone <this repo> && cd AMOAI
 ./scripts/setup-mac.sh
 ```
 
-It installs Homebrew (if needed), Ollama, Python, ffmpeg; picks a model that fits your Mac's
-memory; downloads the models; installs AMO with voice and Open WebUI; creates `.env` with a random
+No Homebrew needed. It installs the Ollama app and Python (via [uv](https://docs.astral.sh/uv/));
+picks a model that fits your Mac; downloads the models; installs AMO with voice and Open WebUI; creates `.env` with a random
 API key and your timezone; and sets AMO + Open WebUI to **start automatically at login**.
 
 Then open **http://localhost:3000** (Open WebUI), create your local account, and pick the **amo** model.
@@ -66,7 +67,7 @@ Auto-start control: `./scripts/mac-autostart.sh status | logs | uninstall`.
 ### Option B — Docker for AMO + Open WebUI, native Ollama
 
 ```sh
-brew install ollama && brew services start ollama
+# install the Ollama app from https://ollama.com/download and open it
 ./scripts/pull-models.sh
 cp .env.example .env          # set a random AMO_API_KEY
 docker compose up -d --build  # needs Docker Desktop
@@ -84,16 +85,17 @@ Or just tell it things in chat — it remembers.
 - In Open WebUI, use the mic button and the speaker icon — both run through AMO's local Whisper/Piper.
 - In Terminal: `amo voice` (press Enter, talk). The first time, macOS asks to allow microphone access
   for Terminal — say yes (System Settings → Privacy & Security → Microphone).
-- If the Piper voice isn't downloaded yet, AMO falls back to the built-in macOS voice.
+- If Piper isn't available (e.g. on some Intel Macs), AMO speaks with the built-in macOS voice.
 
 ### Picking a model (Apple Silicon, by unified memory)
 
 | Your Mac | `AMO_CHAT_MODEL` in `.env` |
 |---|---|
-| 8 GB | `llama3.2:3b` |
-| 16 GB | `llama3.1:8b` (default) or `qwen2.5:7b` |
-| 32 GB | `qwen2.5:14b` |
-| 64 GB+ | `qwen2.5:32b` |
+| Intel (any RAM) | `llama3.2:3b` — CPU only; try `qwen2.5:7b` if you have 16 GB+ and can live with slower replies |
+| Apple Silicon 8 GB | `llama3.2:3b` |
+| Apple Silicon 16 GB | `llama3.1:8b` (default) or `qwen2.5:7b` |
+| Apple Silicon 32 GB | `qwen2.5:14b` |
+| Apple Silicon 64 GB+ | `qwen2.5:32b` |
 
 The model must support tool calling (Llama 3.1+, Qwen 2.5+, Mistral Nemo all do). After changing it,
 run `ollama pull <model>` and restart AMO (`./scripts/mac-autostart.sh install`).
