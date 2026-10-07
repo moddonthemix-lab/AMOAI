@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modd Dashboard</title>
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --ink:#1b1b1b; --mut:#6b6b6b; --line:#e4e4e0; --acc:#2f6fed; --good:#1f9d55; --bad:#d64545; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111214; --card:#1a1c1f; --ink:#ececec; --mut:#9a9a9a; --line:#2a2d31; --acc:#6c9bff; --good:#3ecf7a; --bad:#ff6b6b; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif; }
+  header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:20px 16px 8px; max-width:1200px; margin:auto; flex-wrap:wrap; }
+  h1 { margin:0; font-size:22px; } .mut { color:var(--mut); }
+  main { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:14px; padding:8px 16px 32px; max-width:1200px; margin:auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; min-width:0; }
+  .card h2 { margin:0 0 10px; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); }
+  .big { font-size:28px; font-weight:650; font-variant-numeric:tabular-nums; }
+  .row { display:flex; justify-content:space-between; gap:10px; padding:6px 0; border-top:1px solid var(--line); font-variant-numeric:tabular-nums; }
+  .row:first-of-type { border-top:0; }
+  .pos { color:var(--good); } .neg { color:var(--bad); }
+  .bar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin:8px 0 4px; }
+  .bar > i { display:block; height:100%; background:var(--acc); }
+  .wide { grid-column:1/-1; }
+  form.ask { display:flex; gap:8px; } form.ask input { flex:1; min-width:0; }
+  input, button { font:inherit; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
+  button { background:var(--acc); color:#fff; border:0; cursor:pointer; }
+  #answer { white-space:pre-wrap; margin-top:10px; }
+  .chk { cursor:pointer; } svg { width:100%; height:40px; display:block; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Modd</h1>
+  <span class="mut" id="date"></span>
+</header>
+<main>
+  <section class="card wide">
+    <form class="ask" id="ask"><input id="q" placeholder="Ask Modd or tell it something… (e.g. “book Jay Friday 7pm, 3 hours at $50”)" autocomplete="off"><button>Send</button></form>
+    <div id="answer" class="mut"></div>
+  </section>
+  <section class="card"><h2>Revenue · month</h2><div class="big" id="rev-month">–</div>
+    <div class="bar"><i id="rev-bar" style="width:0"></i></div><div class="mut" id="rev-target"></div>
+    <svg id="spark" viewBox="0 0 140 40" preserveAspectRatio="none"></svg><div id="rev-biz"></div></section>
+  <section class="card"><h2>Studio · today</h2><div id="studio"></div></section>
+  <section class="card"><h2>Daily goals</h2><div id="goals"></div></section>
+  <section class="card"><h2>Trading</h2><div id="trading"></div></section>
+  <section class="card"><h2>Reselling</h2><div id="resale"></div></section>
+  <section class="card"><h2>Notifications</h2><div id="notes"></div></section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const money = n => (n < 0 ? "-$" : "$") + Math.abs(n || 0).toLocaleString(undefined, {maximumFractionDigits: 0});
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let key = ""; try { key = localStorage.getItem("modd_key") || ""; } catch {}
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, {...opts, headers: {"Content-Type": "application/json", ...(key ? {Authorization: "Bearer " + key} : {})}});
+  if (r.status === 401) {
+    key = prompt("Modd API key (MODD_API_KEY):") || "";
+    try { localStorage.setItem("modd_key", key); } catch {}
+    return api(path, opts);
+  }
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  return r.json();
+}
+const row = (l, r, cls = "") => `<div class="row"><span>${l}</span><span class="${cls}">${r}</span></div>`;
+const sign = n => n > 0 ? "pos" : n < 0 ? "neg" : "";
+
+async function load() {
+  const d = await api("/api/dashboard");
+  $("date").textContent = `${d.weekday} · ${d.date}`;
+  const rv = d.revenue;
+  $("rev-month").textContent = money(rv.month);
+  $("rev-bar").style.width = rv.month_pct ? Math.min(100, rv.month_pct * 100) + "%" : "0";
+  $("rev-target").textContent = rv.month_target ? `${Math.round(rv.month_pct * 100)}% of ${money(rv.month_target)} · week ${money(rv.week)} · today ${money(rv.today)}` : `week ${money(rv.week)} · today ${money(rv.today)}`;
+  const max = Math.max(1, ...rv.spark.map(Math.abs));
+  $("spark").innerHTML = `<polyline fill="none" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke" points="${rv.spark.map((v, i) => `${i * 140 / (rv.spark.length - 1)},${38 - (v / max) * 34}`).join(" ")}"/>`;
+  $("rev-biz").innerHTML = Object.entries(rv.by_business).map(([k, v]) => row(k, money(v), sign(v))).join("");
+  $("studio").innerHTML = (d.studio.today.length ? d.studio.today.map(s => row(`${s.time} ${esc(s.client)}`, `${esc(s.service)} · ${s.hours}h`)).join("") : `<div class="mut">No sessions today</div>`)
+    + row("Next 7 days", d.studio.upcoming_7d) + row("Unpaid sessions", d.studio.unpaid, d.studio.unpaid ? "neg" : "");
+  $("goals").innerHTML = d.goals.length ? d.goals.map(g => `<div class="row chk" data-id="${g.id}"><span>${g.done ? "✅" : "⬜️"} ${esc(g.title)}</span><span class="mut">🔥 ${g.streak}</span></div>`).join("") : `<div class="mut">No daily goals yet — tell Modd “add a daily goal: …”</div>`;
+  document.querySelectorAll(".chk").forEach(el => el.onclick = async () => { await api(`/api/goals/${el.dataset.id}/checkin`, {method: "POST", body: "{}"}); load(); });
+  $("trading").innerHTML = row("Today P&L", money(d.trading.today_pnl), sign(d.trading.today_pnl)) + row("Week P&L", money(d.trading.week), sign(d.trading.week)) + row("Open positions", d.trading.open_positions);
+  $("resale").innerHTML = row("Items in inventory", d.reselling.inventory) + row("Stale (30+ days)", d.reselling.stale, d.reselling.stale ? "neg" : "") + row("Cravvr open tasks", d.cravvr.open_tasks);
+  $("notes").innerHTML = d.notifications.length ? d.notifications.map(n => `<div class="row"><span><b>${esc(n.title)}</b><br><span class="mut">${esc(n.body).replace(/\n/g, "<br>")}</span></span></div>`).join("") + `<button id="clear" style="margin-top:8px">Mark all read</button>` : `<div class="mut">All caught up</div>`;
+  if ($("clear")) $("clear").onclick = async () => { await api("/api/notifications/read", {method: "POST"}); load(); };
+}
+
+const history = [];
+$("ask").onsubmit = async e => {
+  e.preventDefault();
+  const message = $("q").value.trim(); if (!message) return;
+  $("q").value = ""; $("answer").textContent = "thinking…";
+  try {
+    const r = await api("/api/ask", {method: "POST", body: JSON.stringify({message, history: history.slice(-10), channel: "webui"})});
+    history.push({role: "user", content: message}, {role: "assistant", content: r.content});
+    $("answer").textContent = r.content + (r.tool_calls.length ? `\n\n↳ ${r.tool_calls.map(t => t.name).join(", ")}` : "");
+    load();
+  } catch (err) { $("answer").textContent = "Error: " + err.message; }
+};
+load().catch(e => $("answer").textContent = "Error: " + e.message);
+setInterval(() => load().catch(() => {}), 60000);
+</script>
+</body>
+</html>
