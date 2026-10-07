@@ -66,6 +66,21 @@
   #toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); background:var(--ink); color:var(--bg); padding:10px 16px;
            border-radius:999px; font-size:14px; opacity:0; transition:opacity .2s; pointer-events:none; max-width:calc(100% - 32px); }
   #toast.show { opacity:1; }
+  .chart-bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+  .chart-bar input { width:140px; text-transform:uppercase; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .seg button { background:transparent; color:var(--ink); border:0; border-radius:0; padding:8px 12px; }
+  .seg button.on { background:var(--ink); color:var(--bg); }
+  .chart-grid { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:14px; }
+  @media (max-width: 860px) { .chart-grid { grid-template-columns:1fr; } }
+  #chart svg { width:100%; height:auto; display:block; }
+  #chart .lbl { font-size:11px; fill:var(--mut); font-family:system-ui,sans-serif; }
+  #chart .num { font-size:11px; font-weight:700; font-family:system-ui,sans-serif; }
+  .badges { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0 10px; }
+  .badge { padding:3px 9px; border-radius:999px; font-size:12px; font-weight:600; border:1px solid var(--line); }
+  .badge.up { color:var(--good); border-color:var(--good); } .badge.down { color:var(--bad); border-color:var(--bad); }
+  #thesis { white-space:pre-wrap; font-size:14px; line-height:1.5; }
+  .bias { font-size:18px; font-weight:700; margin:2px 0 4px; }
 </style>
 </head>
 <body>
@@ -91,6 +106,7 @@
   <button data-tab="studio">Studio</button>
   <button data-tab="reselling">Reselling</button>
   <button data-tab="trading">Trading</button>
+  <button data-tab="charts">Charts</button>
   <button data-tab="cravvr">Cravvr</button>
   <button data-tab="memory">Memory</button>
 </nav>
@@ -340,6 +356,7 @@ async function renderPanel(kind) {
 
 async function renderManage() {
   if (tab === "overview") return;
+  if (tab === "charts") return renderCharts();
   if (!SCHEMA) SCHEMA = await api("/api/schema");
   if (TABS[tab].some(k => SCHEMA[k].fields.some(f => f.type === "client"))) CLIENTS = await api("/api/records/clients");
   const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.search : null;
@@ -351,7 +368,8 @@ async function renderManage() {
 }
 
 function showTab(name) {
-  tab = TABS[name] || name === "overview" ? name : "overview";
+  tab = TABS[name] || name === "overview" || name === "charts" ? name : "overview";
+  if (tab !== "charts") $("manage").innerHTML = "";
   editing = null;
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
   $("overview").hidden = tab !== "overview";
@@ -398,12 +416,100 @@ $("manage").addEventListener("input", e => {
   clearTimeout(searchTimer); searchTimer = setTimeout(() => renderManage().catch(() => {}), 250);
 });
 
+
+// ================================================================ charts (The Strat)
+let chartSym = "SPY", chartTf = "D", lastDisplayAt = null;
+const TF_LABEL = {D: "Daily", W: "Weekly", M: "Monthly", "60": "60m"};
+const NUM_COLOR = {"1": "var(--mut)", "2U": "var(--good)", "2D": "var(--bad)", "3": "#a855f7"};
+
+function svgChart(data) {
+  const narrow = window.innerWidth < 700;
+  const bars = data.bars.slice(narrow ? -40 : -80);
+  const W = 1000, H = 440, padL = 8, padR = 78, padT = 22, padB = 22;
+  const hi = Math.max(...bars.map(b => b.h)), lo = Math.min(...bars.map(b => b.l));
+  const span = (hi - lo) || 1, top = hi + span * 0.04, bot = lo - span * 0.04;
+  const y = v => padT + (top - v) / (top - bot) * (H - padT - padB);
+  const step = (W - padL - padR) / bars.length, bw = Math.max(2, step * 0.62);
+  const dec = hi >= 1000 ? 0 : hi >= 1 ? 2 : 4;
+  const f = v => v.toLocaleString(undefined, {minimumFractionDigits: dec, maximumFractionDigits: dec});
+  let g = "";
+  for (let i = 0; i <= 5; i++) {               // price grid
+    const v = bot + (top - bot) * i / 5;
+    g += `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/>
+          <text class="lbl" x="${W - padR + 6}" y="${y(v) + 4}">${f(v)}</text>`;
+  }
+  const cur = bars[bars.length - 1], prev = bars[bars.length - 2];
+  // Key levels: lines across the chart, labels stacked on the right so they never overlap.
+  const levels = [[cur.o, `${TF_LABEL[data.tf]} open`, "var(--acc)", "2 3"]];
+  if (prev) levels.push([prev.h, "prior high", "var(--good)", "6 4"], [prev.l, "prior low", "var(--bad)", "6 4"]);
+  levels.sort((a, b) => y(a[0]) - y(b[0]));
+  let lastY = -99;
+  for (const [v, text, color, dash] of levels) {
+    const ly = Math.max(y(v) - 4, lastY + 14); lastY = ly;
+    g += `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="${color}" stroke-dasharray="${dash}" stroke-width="1.2"/>
+          <rect x="${padL + 2}" y="${ly - 11}" width="${(text.length + f(v).length + 1) * 6.4 + 8}" height="15" rx="3" fill="var(--card)" opacity=".9"/>
+          <text class="lbl" x="${padL + 6}" y="${ly}" style="fill:${color};font-weight:600">${text} ${f(v)}</text>`;
+  }
+  bars.forEach((b, i) => {
+    const x = padL + step * i + step / 2, up = b.c >= b.o, col = up ? "var(--good)" : "var(--bad)";
+    const yo = y(b.o), yc = y(b.c);
+    g += `<line x1="${x}" x2="${x}" y1="${y(b.h)}" y2="${y(b.l)}" stroke="${col}"/>
+          <rect x="${x - bw / 2}" y="${Math.min(yo, yc)}" width="${bw}" height="${Math.max(1, Math.abs(yc - yo))}" fill="${col}"/>`;
+    if (b.s && (!narrow || i >= bars.length - 25))
+      g += `<text class="num" x="${x}" y="${y(b.h) - 5}" text-anchor="middle" style="fill:${NUM_COLOR[b.s]}">${b.s}</text>`;
+  });
+  g += `<line x1="${padL}" x2="${W - padR}" y1="${y(cur.c)}" y2="${y(cur.c)}" stroke="var(--ink)" stroke-width=".6"/>
+        <rect x="${W - padR + 2}" y="${y(cur.c) - 9}" width="${padR - 4}" height="18" rx="4" fill="var(--ink)"/>
+        <text x="${W - padR + 6}" y="${y(cur.c) + 4}" style="fill:var(--bg);font-size:11px;font-weight:700">${f(cur.c)}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(data.symbol)} ${TF_LABEL[data.tf]} chart">${g}</svg>`;
+}
+
+async function renderCharts() {
+  const m = $("manage");
+  if (!m.querySelector("#chartcard")) {
+    m.innerHTML = `<section class="card" id="chartcard">
+      <form class="chart-bar" id="chartform">
+        <input id="sym" value="${esc(chartSym)}" aria-label="Ticker" placeholder="SPY, NQ, BTC…">
+        <button>Go</button>
+        <span class="seg" id="tfs">${["60", "D", "W", "M"].map(t => `<button type="button" data-tf="${t}">${TF_LABEL[t]}</button>`).join("")}</span>
+        <span class="mut" id="chartname"></span>
+      </form>
+      <div class="chart-grid"><div id="chart" class="mut">Loading…</div>
+        <div><div class="bias" id="bias"></div><div class="badges" id="badges"></div><div id="thesis" class="mut"></div></div></div>
+    </section>`;
+    $("chartform").onsubmit = e => { e.preventDefault(); chartSym = $("sym").value.trim().toUpperCase() || "SPY"; renderCharts(); };
+    $("tfs").onclick = e => { const b = e.target.closest("button[data-tf]"); if (b) { chartTf = b.dataset.tf; renderCharts(); } };
+  }
+  $("sym").value = chartSym;
+  document.querySelectorAll("#tfs button").forEach(b => b.classList.toggle("on", b.dataset.tf === chartTf));
+  $("chart").textContent = "Loading…"; $("thesis").textContent = "Reading The Strat…";
+  try {
+    const [bars, rep] = await Promise.all([api(`/api/market/${encodeURIComponent(chartSym)}?tf=${chartTf}`),
+                                           api(`/api/strat/${encodeURIComponent(chartSym)}`)]);
+    $("chart").innerHTML = svgChart(bars);
+    $("chartname").textContent = bars.name !== bars.symbol ? `${bars.name} · ${bars.symbol}` : bars.symbol;
+    $("bias").innerHTML = `<span class="${rep.bias.includes("bull") ? "pos" : rep.bias.includes("bear") ? "neg" : ""}">${esc(rep.bias.toUpperCase())}</span>`;
+    $("badges").innerHTML = ["Q", "M", "W", "D", "60"].filter(t => rep.timeframes[t]).map(t => {
+      const tf = rep.timeframes[t];
+      return `<span class="badge ${tf.up ? "up" : "down"}" title="price vs ${t} open ${tf.open}">${t === "60" ? "60m" : t} ${tf.arrow} ${tf.type || ""}</span>`;
+    }).join("");
+    $("thesis").textContent = rep.thesis.split("\n").slice(2).join("\n");
+    $("thesis").classList.remove("mut");
+  } catch (e) { $("chart").textContent = "Couldn't load chart: " + e.message; $("thesis").textContent = ""; }
+}
+
 // ---- live updates: anything changed by voice, chat or another window shows up within ~2s
 let lastVersion = null;
 async function watchChanges() {
   try {
-    const {v} = await api("/api/version");
-    if (lastVersion !== null && v !== lastVersion) {
+    const {v, display} = await api("/api/version");
+    // AMO asked to show something (e.g. "pull up the NQ chart")
+    if (display && display.at !== lastDisplayAt) {
+      const first = lastDisplayAt === null && lastVersion === null;
+      lastDisplayAt = display.at;
+      if (!first && display.chart) { chartSym = display.chart; chartTf = display.tf || "D"; showTab("charts"); lastVersion = v; }
+    }
+    if (lastVersion !== null && v !== lastVersion && tab !== "charts") {
       if (tab === "overview") await load();
       else { renderManage.live = true; try { await renderManage(); } finally { renderManage.live = false; } }
     }

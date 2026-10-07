@@ -613,8 +613,44 @@ def patch_cravvr_task(task_id: int, s: TaskStatus):
 # ======================================================== manage anything (dashboard tabs)
 @app.get("/api/version", dependencies=[Depends(auth)])
 def version():
-    """Changes whenever any data changes (voice, chat or dashboard) — the dashboard polls this."""
-    return {"v": get_db().data_version()}
+    """Changes whenever any data changes (voice, chat or dashboard) — the dashboard polls this.
+    `display` is what AMO last asked the dashboard to show (e.g. a chart)."""
+    db = get_db()
+    display = db.get_kv("display")
+    return {"v": db.data_version(), "display": json.loads(display) if display else None}
+
+
+@app.get("/api/market/{symbol}", dependencies=[Depends(auth)])
+async def market_bars(symbol: str, tf: str = "D", n: int = 80):
+    """Candles with Strat numbers for charting."""
+    from .. import market, strat
+
+    def build():
+        sym = market.lookup(symbol)
+        bars, meta = market.candles(sym, tf)
+        types = strat.label(bars)
+        k = max(2, min(n, 300))
+        return {"symbol": sym, "tf": tf, "name": meta.get("longName") or meta.get("shortName") or sym,
+                "bars": [{**b.as_dict(), "s": t} for b, t in zip(bars[-k:], types[-k:])]}
+
+    try:
+        return await run_in_threadpool(build)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except Exception as e:  # noqa: BLE001 — network etc.
+        raise HTTPException(502, f"market data unavailable: {e}") from e
+
+
+@app.get("/api/strat/{symbol}", dependencies=[Depends(auth)])
+async def strat_report(symbol: str):
+    from .. import strat
+
+    try:
+        return await run_in_threadpool(strat.report, symbol)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"market data unavailable: {e}") from e
 
 
 @app.get("/api/schema", dependencies=[Depends(auth)])

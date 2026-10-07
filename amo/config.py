@@ -92,6 +92,9 @@ class Settings:
     keep_alive: str = field(default_factory=lambda: _env("AMO_KEEP_ALIVE", "30m"))
     think: bool = field(default_factory=lambda: _env("AMO_THINK", "0") in ("1", "true", "yes"))
 
+    # Web search: blank = DuckDuckGo (no key). Or your own SearXNG, e.g. http://localhost:8888
+    searxng_url: str = field(default_factory=lambda: _env("AMO_SEARXNG_URL", ""))
+
     # Monthly revenue target shown on the dashboard (0 = none).
     monthly_revenue_target: float = field(
         default_factory=lambda: float(_env("AMO_MONTHLY_REVENUE_TARGET", "0"))

@@ -44,6 +44,9 @@ How you work:
 - You can change or delete anything (goals, clients, sessions, payments, inventory, trades, rules,
   Cravvr tasks, memories) with update_record / delete_record. Only say something is saved, changed or
   deleted after the tool succeeded.
+- For anything current or that you're not sure of (news, facts, prices, people), use web_search
+  (and read_webpage for detail), then answer briefly and name your source. Don't guess.
+- For trading charts and analysis use strat_analysis — it computes The Strat levels from live data.
 - If a tool returns an error (e.g. an ambiguous client), ask a short clarifying question.
 {voice_hint}{personality}
 What you know about {owner}:
@@ -132,16 +135,29 @@ class Agent:
         trace: list[dict[str, Any]] = []
 
         # 1) Common, unambiguous requests ("add a daily goal: …") are done directly.
+        self._channel = channel
         content = ""
         fast = fastpath.match(user_text) if user_text else None
         if fast:
             name, args = fast
             result = json.loads(tools.call(name, args))
+            if name == "show_chart" and "error" not in result:
+                # "Pull up the chart" → show it AND give the read.
+                result = json.loads(tools.call("strat_analysis", {"symbol": result["symbol"]}))
+                name = "strat_analysis"
             content = instant_reply([{"name": name, "arguments": args, "result": result}]) or ""
             if content:
                 trace.append({"name": name, "arguments": args, "result": result})
             elif name == "delete_record" and "error" in result:
                 content = result["error"]  # "couldn't find…" / "which one?" — ask straight away
+            elif name in ("strat_analysis", "strat_compare", "show_chart") and "error" not in result:
+                trace.append({"name": name, "arguments": args, "result": result})
+                voice = channel == "voice"
+                content = (result.get("summary" if voice else "thesis")
+                           or result.get("spoken" if voice else "text")
+                           or f"The {result.get('symbol')} chart is up on your dashboard.")
+            elif name in ("strat_analysis", "strat_compare", "show_chart"):
+                content = result["error"]
         if not content:  # no shortcut, or it failed: let the model handle it
             content = self._tool_loop(llm, convo, schemas, model, trace)
 
@@ -187,6 +203,12 @@ class Agent:
             quick = instant_reply(round_trace)
             if quick:
                 return quick
+            # A Strat analysis is computed, not written by the model — return it as-is.
+            for t in round_trace:
+                if t["name"] == "strat_analysis" and "thesis" in t["result"]:
+                    return t["result"]["summary" if self._channel == "voice" else "thesis"]
+                if t["name"] == "strat_compare" and "text" in t["result"]:
+                    return t["result"]["spoken" if self._channel == "voice" else "text"]
         # Ran out of tool rounds: ask for a final answer without tools.
         return llm.chat(convo + [{"role": "user", "content": "Summarize what you did."}],
                         model=model).get("content", "")

@@ -437,6 +437,73 @@ def delete_record(kind: str, item: str):
     return records.delete(kind, item, get_db())
 
 
+# ---------------------------------------------------------------- web
+@tool("Search the web for current information: news, facts, prices, people, how-tos, anything you "
+      "don't know or that may have changed. Returns titles, links and snippets.",
+      query=("string", "What to search for.", True))
+def web_search(query: str):
+    from . import web
+
+    return web.search(query, 6)
+
+
+@tool("Read a web page (e.g. a search result) to get its full text.",
+      url=("string", "The page URL.", True))
+def read_webpage(url: str):
+    from . import web
+
+    return web.read(url, 5000)
+
+
+# ---------------------------------------------------------------- markets / The Strat
+@tool("The Strat analysis of any ticker (stock, ETF, futures like NQ/ES, crypto like BTC): candle "
+      "numbers (1, 2U, 2D, 3) on Monthly/Weekly/Daily, timeframe continuity, setups with triggers and "
+      "targets, AMO's graded take (A/B/C, best setup, risk:reward) and a written thesis.",
+      symbol=("string", "Ticker or name, e.g. SPY, NQ, BTC, Tesla.", True),
+      timeframe=("enum:D|W|M|60", "Chart candles to show (default D).", False))
+def strat_analysis(symbol: str, timeframe: str = "D"):
+    from . import strat
+
+    report = strat.report(symbol)
+    return {k: report[k] for k in ("symbol", "price", "bias", "why", "thesis", "summary", "take")}
+
+
+@tool("Compare The Strat setups on several tickers and pick the best one (e.g. 'Amazon or Tesla?').",
+      symbols=("string", "Tickers or names separated by commas, e.g. 'AMZN, TSLA, NVDA'.", True))
+def strat_compare(symbols: str):
+    from . import strat
+
+    names = [x.strip() for x in re.split(r",|\bor\b|\band\b|&|/|\bvs\.?\b", symbols) if x.strip()]
+    return strat.compare(names[:8])
+
+
+@tool("Show a price chart on the AMO dashboard.",
+      symbol=("string", "Ticker or name.", True),
+      timeframe=("enum:D|W|M|60", "Candle size: D daily (default), W weekly, M monthly, 60 hourly.", False))
+def show_chart(symbol: str, timeframe: str = "D"):
+    import time as _time
+
+    from .market import lookup
+
+    sym = lookup(symbol)
+    db = get_db()
+    db.set_kv("display", json.dumps({"chart": sym, "tf": timeframe, "at": _time.time()}))
+    db.execute("UPDATE data_version SET v = v + 1")  # wake the dashboard
+    return {"shown": True, "symbol": sym, "timeframe": timeframe}
+
+
+@tool("Latest price for a ticker.", symbol=("string", "Ticker or name.", True))
+def quote(symbol: str):
+    from .market import candles, lookup
+
+    sym = lookup(symbol)
+    daily, meta = candles(sym, "D")
+    last, prev = daily[-1], daily[-2]
+    return {"symbol": sym, "price": round(last.c, 4), "change": round(last.c - prev.c, 4),
+            "change_pct": round((last.c / prev.c - 1) * 100, 2), "day_high": last.h, "day_low": last.l,
+            "currency": meta.get("currency")}
+
+
 # ---------------------------------------------------------------- routing
 # Sending all ~34 tool definitions costs ~4k prompt tokens per message, which is slow on a
 # CPU-only machine. Each message only gets the tool groups it plausibly needs.
@@ -476,6 +543,19 @@ GROUPS: dict[str, tuple[list[str], str]] = {
         ["find_records", "update_record", "delete_record"],
         r"delete|remove|get rid|drop|erase|cancel|change|update|edit|rename|fix|wrong|move|"
         r"switch|instead|correct|mistake|undo|show (me )?(my|all)|list (my|all)",
+    ),
+    "markets": (
+        ["strat_analysis", "strat_compare", "show_chart", "quote"],
+        r"\bstrat\b|thesis|chart|candle|continuity|ftfc|inside bar|2-1-2|3-1-2|setup|levels?\b|"
+        r"price of|stock|ticker|\bspy\b|\bqqq\b|\bnq\b|\bes\b|futures|crypto|bitcoin|\bbtc\b|nasdaq|"
+        r"s&p|market|daily|weekly|monthly|input on|take on|thoughts on|how does .* look|setups?\b|amazon|tesla|"
+        r"apple|nvidia|microsoft|google|meta|netflix",
+    ),
+    "web": (
+        ["web_search", "read_webpage"],
+        r"search|look (it )?up|google|online|internet|web|news|latest|current|right now|today|"
+        r"who (is|was|won)|what is|what's|when (is|was|did)|where|how (do|does|to|much|many)|why|"
+        r"weather|score|release|recipe|define|meaning|http|www\.|\.com",
     ),
     "admin": (
         ["forget", "send_notification"],

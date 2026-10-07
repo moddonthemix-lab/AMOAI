@@ -30,6 +30,10 @@ Just talk to it in Open WebUI (pick the **amo** model) or say it out loud:
   rules" · "How do I do when I break my rules?" · "Add a rule: no trades after 11am"
 - **Goals** — "Add a daily goal: make one beat" · "Done with the beat" · streaks on the dashboard
 - **Cravvr** — "Add a Cravvr task: finalize menu pricing, high priority" · "What's open for Cravvr?"
+- **Web** — anything current: "what's the latest on the Fed?", "how do I price a mixing session?" —
+  AMO searches the web (DuckDuckGo, no key), reads the pages and names its source
+- **The Strat** — "What's your input on Amazon or Tesla setups?", "How does NVDA look?",
+  "Pull up the weekly chart for NQ" (see below)
 - **Revenue** — "How much did I make this month?" (studio + Cravvr + reselling profit + trading P&L)
 - **Memory** — tell it anything ("My engineer Marcus works Tuesdays") and it remembers. It also pulls facts
   out of conversations automatically, and every Sunday night writes a **weekly reflection** (what's working,
@@ -41,6 +45,22 @@ Dashboard: **http://localhost:8765** — revenue vs. target, today's sessions, g
 trading, reselling, notifications, and a quick "ask AMO" box.
 
 ---
+
+## The Strat
+
+AMO reads charts with The Strat (Rob Smith), computed from live Yahoo Finance data — stocks, ETFs,
+futures (NQ, ES, CL, GC…) and crypto (BTC, ETH):
+
+- candle numbers **1 / 2U / 2D / 3** on Monthly, Weekly and Daily ("the break decides the number")
+- **timeframe continuity**: price vs the Quarterly, Monthly, Weekly, Daily and 60-minute opens (FTFC),
+  the **most 2s**, and lower-timeframe override
+- setups **2-1-2, 3-1-2, 1-2-2 Rev Strat, 2-2, 3-2-2, 2-2-2, hammer/shooter** — trigger (break of the
+  last bar's high/low), target (the previous range), stop, risk:reward, triggered or waiting
+- **AMO's take**: an A/B/C grade for the best setup in the direction of continuity, or "stand aside"
+
+Rules follow thestrat.ai's *3 Universal Truths* and thestrat-indicators.com. Every number is
+calculated — never guessed by the AI. The **Charts** tab on the dashboard draws the candles with
+their Strat numbers, key levels, continuity badges and the full thesis. Not financial advice.
 
 ## Setup (Mac)
 
