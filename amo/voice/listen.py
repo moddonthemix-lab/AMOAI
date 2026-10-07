@@ -139,6 +139,7 @@ class Listener:
     respond: Callable[[list[dict[str, str]], str], tuple[str, str | None]] | None = None
     brief: Callable[[], str] | None = None  # morning brief text (a device asks the brain for it)
     announcements: Callable[[], list[str]] | None = None  # things AMO wants to say on its own
+    wake_stream: Callable[[float | None], Iterator[Any]] | None = None  # streaming wake engine (vosk/oww)
     poll_seconds: float = 3.0
     _interrupted: str | None = None
     log: Callable[[str], None] = print
@@ -292,12 +293,13 @@ class Listener:
 
     def run(self) -> None:
         self.log('Listening. Say "Hey AMO" … (Ctrl+C to quit)')
+        idle = self.wake_stream or self.segments  # what to listen with while waiting for "Hey AMO"
         if self.announcements is None:
-            for seg in self.segments(None):
+            for seg in idle(None):
                 self.step(seg)
             return
         while True:  # listen in short windows so AMO can speak up between them
-            for seg in self.segments(self.poll_seconds):
+            for seg in idle(self.poll_seconds):
                 self.step(seg)
             self.speak_announcements()
 
@@ -521,12 +523,29 @@ def run(verbose: bool = False) -> None:
 
     threading.Thread(target=acks.prewarm, daemon=True).start()
 
+    from .wake import StreamingWake, WakeEvent, make_detector
+
     print("Loading speech models …")
-    transcribe_array(mic.np.zeros(SAMPLE_RATE // 2, dtype="float32"), model=settings.wake_model)
+    detector = make_detector()
+    if detector is None:
+        transcribe_array(mic.np.zeros(SAMPLE_RATE // 2, dtype="float32"), model=settings.wake_model)
+    print(f"Wake word engine: {settings.wake_engine}")
+
+    def wake_text(seg) -> str:
+        if isinstance(seg, WakeEvent):  # the engine already heard "Hey AMO"
+            return "Hey AMO " + (transcribe_array(seg.audio, prompt="AMO") if seg.audio is not None else "")
+        return transcribe_array(seg, model=settings.wake_model, prompt=WAKE_PROMPT)
+
+    def command_text(seg) -> str:
+        if isinstance(seg, WakeEvent):
+            return "Hey AMO " + (transcribe_array(seg.audio, prompt="AMO") if seg.audio is not None else "")
+        return transcribe_array(seg, prompt="AMO")
+
     listener = Listener(
         segments=mic,
-        transcribe_wake=lambda seg: transcribe_array(seg, model=settings.wake_model, prompt=WAKE_PROMPT),
-        transcribe_command=lambda seg: transcribe_array(seg, prompt="AMO"),
+        wake_stream=StreamingWake(mic, detector) if detector else None,
+        transcribe_wake=wake_text,
+        transcribe_command=command_text,
         ask=lambda history: agent.chat(history, channel="voice")["content"],
         say=say,
         chime=ding,

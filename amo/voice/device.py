@@ -148,10 +148,27 @@ def run(brain_url: str, key: str = "", verbose: bool = False) -> None:
         play_wav(chime)
         mic.flush()
 
+    # With a local wake engine (vosk/openwakeword) only speech AFTER "Hey AMO" leaves the device.
+    from .wake import StreamingWake, WakeEvent, make_detector
+
+    detector = make_detector()
+    print(f"Wake word engine: {settings.wake_engine}" + ("" if detector else " (checked by the brain)"))
+
+    def wake_text(seg) -> str:
+        if isinstance(seg, WakeEvent):
+            return "Hey AMO " + (brain.hear(seg.audio) if seg.audio is not None else "")
+        return brain.hear(seg, settings.wake_model)
+
+    def command_text(seg) -> str:
+        if isinstance(seg, WakeEvent):
+            return "Hey AMO " + (brain.hear(seg.audio) if seg.audio is not None else "")
+        return brain.hear(seg)
+
     listener = Listener(
         segments=mic,
-        transcribe_wake=lambda seg: brain.hear(seg, settings.wake_model),
-        transcribe_command=lambda seg: brain.hear(seg),
+        wake_stream=StreamingWake(mic, detector) if detector else None,
+        transcribe_wake=wake_text,
+        transcribe_command=command_text,
         ask=lambda history: "",
         say=say,
         chime=ding,

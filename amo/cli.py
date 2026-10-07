@@ -11,6 +11,7 @@
   amo use MODEL           download a model and switch AMO to it (e.g. amo use gemma4:e2b)
   amo bench [MODEL ...]   time models on this computer and check they can save data
   amo listen              hands-free: say "Hey AMO" (add -v to see what it hears)
+  amo setup-wake vosk     lighter "Hey AMO" detector for a Raspberry Pi (or openwakeword)
   amo lan on|off|status   let a body device on your Wi-Fi (Raspberry Pi) reach this Mac
   amo device --brain URL --key KEY   run AMO's body (mic + speaker) against a brain on your network
   amo mic-test            check the microphone, speech recognition and voice step by step
@@ -259,6 +260,12 @@ def cmd_device(a):
     from .voice.device import run
 
     run(a.brain, a.key or settings.api_key, verbose=a.verbose)
+
+
+def cmd_setup_wake(a):
+    from .voice.wake import setup
+
+    setup(a.engine)
 
 
 def cmd_setup_voice(_a):
@@ -551,6 +558,9 @@ def main(argv: list[str] | None = None) -> None:
     dv.add_argument("--key", default="", help="the brain's AMO_API_KEY")
     dv.add_argument("-v", "--verbose", action="store_true")
     dv.set_defaults(fn=cmd_device)
+    sw = sub.add_parser("setup-wake", help="install a lighter wake-word engine (vosk / openwakeword)")
+    sw.add_argument("engine", choices=["vosk", "openwakeword"])
+    sw.set_defaults(fn=cmd_setup_wake)
     sub.add_parser("mic-test", help="check mic, speech recognition and voice").set_defaults(fn=cmd_mic_test)
     sub.add_parser("setup-voice", help="download the default Piper voice").set_defaults(fn=cmd_setup_voice)
 

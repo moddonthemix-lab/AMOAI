@@ -83,11 +83,16 @@ class Settings:
     quiet_hours: str = field(default_factory=lambda: _env("AMO_QUIET_HOURS", "22-8"))
     checkin_hour: int = field(default_factory=lambda: int(_env("AMO_CHECKIN_HOUR", "21")))
 
-    # Speak while thinking (voice starts on the first finished sentence) and let you interrupt
-    # AMO mid-answer ("AMO, stop", "hold on", "never mind").
+    # Speak while thinking (voice starts on the first finished sentence). Interrupting AMO
+    # mid-answer ("AMO, stop") is off by default — AMO always finishes; AMO_BARGE_IN=1 to allow it.
     stream_speech: bool = field(default_factory=lambda: _env("AMO_STREAM_SPEECH", "1") not in ("0", "false", "no"))
-    barge_in: bool = field(default_factory=lambda: _env("AMO_BARGE_IN", "1") not in ("0", "false", "no"))
+    barge_in: bool = field(default_factory=lambda: _env("AMO_BARGE_IN", "0") in ("1", "true", "yes"))
 
+    # Wake-word engine: whisper (default) | vosk (light, for a Pi) | openwakeword (lightest, trained)
+    wake_engine: str = field(default_factory=lambda: _env("AMO_WAKE_ENGINE", "whisper"))
+    vosk_model: str = field(default_factory=lambda: _env("AMO_VOSK_MODEL", "./models/vosk/vosk-model-small-en-us-0.15"))
+    oww_model: str = field(default_factory=lambda: _env("AMO_OWW_MODEL", "./models/wake/hey_amo.onnx"))
+    oww_threshold: float = field(default_factory=lambda: float(_env("AMO_OWW_THRESHOLD", "0.5")))
     # Wake word ("Hey AMO"): a tiny Whisper model checks short bursts of speech for the phrase.
     wake_model: str = field(default_factory=lambda: _env("AMO_WAKE_MODEL", "tiny.en"))
     # Extra spellings Whisper might hear for "AMO", comma-separated (e.g. "amore,emu").

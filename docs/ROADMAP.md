@@ -17,6 +17,8 @@ What's already in place:
 To do:
 - [ ] Pi 5 (8GB) install guide + systemd service (smaller model: `llama3.2:3b` or `qwen2.5:3b` as chat model)
 - [x] Wake word "Hey AMO" (`amo listen`, done in Phase 1 — runs the same on the Pi)
+- [x] Light wake-word engines for the Pi: Vosk now, trainable openWakeWord (docs/WAKE_WORD.md)
+- [x] Body client: `amo device --brain …` (ears + mouth on the Pi, thinking on the Mac)
 - [ ] USB mic / speaker setup, voice loop as a service
 - [ ] Optional: keep the big model on the Mac and point the Pi's `OLLAMA_URL` at it over LAN
 - [ ] Move `data/amo.db` to the Pi (single file copy) — backups via cron

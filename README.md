@@ -129,10 +129,8 @@ in `.env`; if it misses you, `2`. If Whisper keeps spelling the name differently
 `AMO_WAKE_WORDS=amor,emu`.
 
 **Speak while thinking:** AMO starts talking as soon as the first sentence of the answer is
-written, instead of waiting for the whole thing. **Interrupt any time:** say "AMO, stop",
-"hold on" or "never mind" — or just ask something else ("AMO, stop — what's my schedule?").
-AMO ignores its own voice coming back through the speaker. Turn off with `AMO_STREAM_SPEECH=0`
-or `AMO_BARGE_IN=0`.
+written, instead of waiting for the whole thing, and always finishes what it's saying.
+(`AMO_STREAM_SPEECH=0` turns streaming off; `AMO_BARGE_IN=1` would let you cut it off mid-answer.)
 
 ### AMO speaks up on its own
 
