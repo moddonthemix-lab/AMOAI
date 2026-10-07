@@ -77,6 +77,11 @@ class Settings:
     ack_still: str = field(default_factory=lambda: _env("AMO_ACK_STILL", "Still working on it.|Almost there."))
     ack_still_after: float = field(default_factory=lambda: float(_env("AMO_ACK_STILL_AFTER", "7")))
 
+    # Speak while thinking (voice starts on the first finished sentence) and let you interrupt
+    # AMO mid-answer ("AMO, stop", "hold on", "never mind").
+    stream_speech: bool = field(default_factory=lambda: _env("AMO_STREAM_SPEECH", "1") not in ("0", "false", "no"))
+    barge_in: bool = field(default_factory=lambda: _env("AMO_BARGE_IN", "1") not in ("0", "false", "no"))
+
     # Wake word ("Hey AMO"): a tiny Whisper model checks short bursts of speech for the phrase.
     wake_model: str = field(default_factory=lambda: _env("AMO_WAKE_MODEL", "tiny.en"))
     # Extra spellings Whisper might hear for "AMO", comma-separated (e.g. "amore,emu").

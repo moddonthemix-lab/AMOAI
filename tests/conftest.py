@@ -27,6 +27,15 @@ class FakeLLM:
             return self.queue.pop(0)
         return {"role": "assistant", "content": "ok"}
 
+    def stream_chat(self, messages, model=None, tools=None):
+        """Streams the next scripted reply word by word (tool calls come through whole)."""
+        msg = self.chat(messages, model=model, tools=tools)
+        if msg.get("tool_calls"):
+            yield {"tool_calls": msg["tool_calls"]}
+        words = msg.get("content", "").split(" ")
+        for i, w in enumerate(words):
+            yield {"content": w + (" " if i < len(words) - 1 else "")}
+
     def embed(self, text, model=None):
         return None
 

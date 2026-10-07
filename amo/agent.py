@@ -7,7 +7,7 @@ import json
 import re
 import logging
 import threading
-from typing import Any
+from typing import Any, Callable
 
 from . import tools
 from .config import settings
@@ -111,9 +111,14 @@ class Agent:
         channel: str = "webui",
         model: str | None = None,
         learn: bool | None = None,
+        on_text: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
         """Run one assistant turn. `messages` is the chat history WITHOUT a system prompt
         (any client-supplied system message is kept, appended after ours).
+
+        on_text: if given, receives the reply as it's written (piece by piece for answers, so
+        voice can start speaking the first sentence early; all at once for saved actions, which
+        are verified before anything is said).
 
         Returns {"content": str, "tool_calls": [{"name", "arguments", "result"}]}.
         """
@@ -136,6 +141,8 @@ class Agent:
 
         # 1) Common, unambiguous requests ("add a daily goal: …") are done directly.
         self._channel = channel
+        self._on_text = on_text if (on_text and kind_of(user_text or "") != "action") else None
+        self._final_streamed = False
         content = ""
         fast = fastpath.match(user_text) if user_text else None
         if fast:
@@ -174,6 +181,8 @@ class Agent:
                 content = ("Sorry — I didn't manage to save that. Try saying it again a bit more directly, "
                            "for example: \"add a daily goal: make one beat\".")
 
+        if on_text and not self._final_streamed and content:
+            on_text(content)
         self._log(channel, user_text, content)
         # Fact learning normally runs from the scheduler once you've gone quiet, so it never
         # competes with your next message for the CPU. learn=True forces it now (in background).
@@ -185,9 +194,10 @@ class Agent:
                    model: str | None, trace: list[dict[str, Any]]) -> str:
         """Let the model call tools until it answers. Appends to `trace`, returns the reply."""
         for _ in range(MAX_TOOL_ROUNDS):
-            msg = llm.chat(convo, model=model, tools=schemas)
+            msg = self._model_turn(llm, convo, model, schemas)
             calls = msg.get("tool_calls") or []
             if not calls:
+                self._final_streamed = bool(msg.get("_streamed"))
                 return msg.get("content", "")
             convo.append({"role": "assistant", "content": msg.get("content", ""), "tool_calls": calls})
             round_trace: list[dict[str, Any]] = []
@@ -212,6 +222,23 @@ class Agent:
         # Ran out of tool rounds: ask for a final answer without tools.
         return llm.chat(convo + [{"role": "user", "content": "Summarize what you did."}],
                         model=model).get("content", "")
+
+    def _model_turn(self, llm: Any, convo: list[dict[str, Any]], model: str | None,
+                    schemas: list[dict[str, Any]]) -> dict[str, Any]:
+        """One model call. When streaming, text is passed on as it arrives."""
+        if not self._on_text or not hasattr(llm, "stream_chat"):
+            return llm.chat(convo, model=model, tools=schemas)
+        content, calls, streamed = [], [], False
+        for event in llm.stream_chat(convo, model=model, tools=schemas):
+            if event.get("tool_calls"):
+                calls += event["tool_calls"]
+            elif event.get("content"):
+                content.append(event["content"])
+                if not calls:
+                    self._on_text(event["content"])
+                    streamed = True
+        return {"role": "assistant", "content": "".join(content), "tool_calls": calls,
+                "_streamed": streamed and not calls}
 
     def _log(self, channel: str, user_text: str, reply: str) -> None:
         ts = now_iso()

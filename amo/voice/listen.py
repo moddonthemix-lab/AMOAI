@@ -97,6 +97,30 @@ def brief_for_speech(text: str) -> str:
     return ". ".join(lines) + "."
 
 
+# ------------------------------------------------------------------ barge-in ("AMO, stop")
+_INTERRUPT = re.compile(r"\b(stop|amo|ammo|shut up|quiet|hold on|hang on|wait|never ?mind|cancel|enough|"
+                        r"pause|okay okay|ok ok|got it)\b")
+
+
+def barge_in(heard: str, being_said: str) -> tuple[bool, str]:
+    """While AMO is talking: did the user interrupt? Returns (interrupted, what they asked instead).
+    The mic also hears AMO itself, so anything that's mostly AMO's own words is ignored."""
+    h = _normalize(heard)
+    if not h:
+        return False, ""
+    said = set(_normalize(being_said).split())
+    words = [w for w in h.split() if len(w) > 2]
+    if words and sum(w in said for w in words) / len(words) >= 0.6:
+        return False, ""  # echo of AMO's own voice
+    woke, rest = match_wake(heard)
+    if woke:
+        return True, rest
+    if _INTERRUPT.search(h):
+        rest = _INTERRUPT.sub(" ", h, count=1).strip()
+        return True, rest if len(rest.split()) >= 2 else ""
+    return False, ""
+
+
 # ------------------------------------------------------------------ the listener
 @dataclass
 class Listener:
@@ -110,6 +134,11 @@ class Listener:
     chime: Callable[[], None] = lambda: None
     ack: Callable[[str], None] = lambda request: None  # "Got it" while the model works
     wait: Callable[[Any], None] = lambda worker: worker.join()  # + "Still working on it." on long waits
+    # Optional: speak-while-thinking. respond(history, command) → (reply, interruption or None).
+    # interruption is what the user said when they cut AMO off ("" = just "stop").
+    respond: Callable[[list[dict[str, str]], str], tuple[str, str | None]] | None = None
+    brief: Callable[[], str] | None = None  # morning brief text (a device asks the brain for it)
+    _interrupted: str | None = None
     log: Callable[[str], None] = print
     verbose: bool = False
     follow_up_seconds: float = 7.0
@@ -143,14 +172,28 @@ class Listener:
             self.say(f"It's {hour}:{now.minute:02d} {'AM' if now.hour < 12 else 'PM'}.")
             return True
         if kind == "morning":
-            from ..db import get_db
-            from ..scheduler import morning_brief_text
+            if self.brief is not None:
+                text = self.brief()
+            else:
+                from ..db import get_db
+                from ..scheduler import morning_brief_text
 
-            self.say(brief_for_speech(morning_brief_text(get_db())))
+                text = morning_brief_text(get_db())
+            self.say(brief_for_speech(text))
             return True
 
         self.history.append({"role": "user", "content": command})
         self.log("   … thinking")
+        if self.respond is not None:
+            try:
+                reply, self._interrupted = self.respond(self.history[-10:], command)
+            except Exception as e:  # noqa: BLE001 — report instead of killing the listener
+                self.log(f"   ✗ {e}")
+                self.say("Sorry, I couldn't do that. Check the AMO window for details.")
+                return False
+            self.history.append({"role": "assistant", "content": reply})
+            self.log(f"AMO: {reply}" + ("   ✋ (interrupted)" if self._interrupted is not None else ""))
+            return True
         # Ask the model in the background and say "Got it" / "Let me think" meanwhile.
         result: dict[str, Any] = {}
 
@@ -180,6 +223,17 @@ class Listener:
             self.log(f"you: {command}")
             if not self.handle(command) or self.asleep:
                 return
+            if self._interrupted is not None:  # cut off mid-answer
+                command, self._interrupted = self._interrupted, None
+                if command:
+                    continue  # "AMO, stop — what's my schedule?" → answer the new question
+                self.chime()
+                self.log("🎙  Yes?")
+                seg = self.next_utterance(8.0)
+                if seg is None:
+                    return
+                command = self.transcribe_command(seg)
+                continue
             self.log(f"   (follow up within {self.follow_up_seconds:g}s — no need to say Hey AMO)")
             seg = self.next_utterance(self.follow_up_seconds)
             if seg is None:
@@ -286,6 +340,17 @@ class MicSegmenter:
                 print(f"\r   mic {mark[:10]}|{mark[10:]} {level:.4f} (wakes above {self.threshold:.4f}) {hit:<14}",
                       end="", flush=True)
 
+    def listen_once(self, timeout: float, max_seconds: float = 3.0) -> Any | None:
+        """One short utterance (used to catch interruptions while AMO talks), or None."""
+        saved = self.max_blocks
+        self.max_blocks = int(max_seconds * SAMPLE_RATE / BLOCK)
+        try:
+            for seg in self(timeout):
+                return seg
+            return None
+        finally:
+            self.max_blocks = saved
+
     def __call__(self, timeout: float | None) -> Iterator[Any]:
         np = self.np
         deadline = time.monotonic() + timeout if timeout else None
@@ -375,6 +440,62 @@ def run(verbose: bool = False) -> None:
                 pass
         acks.wait_with_updates(worker, speak_line)
 
+    from .speaker import SentenceSpeaker
+
+    def respond(history: list[dict[str, str]], command: str) -> tuple[str, str | None]:
+        """Speak while thinking: "Got it" right away, then each sentence as soon as it's written.
+        Keeps an ear open while talking so you can cut AMO off ("AMO, stop")."""
+        speaker = SentenceSpeaker(synth=synthesize)
+        phrase = acks.pick(command)
+        if phrase:
+            try:
+                speaker.say_audio(acks.audio(phrase), phrase)
+            except Exception:  # noqa: BLE001 — acks are optional
+                pass
+        result: dict[str, Any] = {}
+
+        def work() -> None:
+            try:
+                result["reply"] = agent.chat(history, channel="voice", on_text=speaker.feed)["content"]
+            except Exception as e:  # noqa: BLE001
+                result["error"] = e
+                print(f"   ✗ {e}")
+                speaker.feed("Sorry, I couldn't do that. Check the AMO window for details. ")
+            finally:
+                speaker.finish()
+
+        worker = threading.Thread(target=work, daemon=True)
+        worker.start()
+        interrupt: str | None = None
+        still_n, next_still = 0, time.monotonic() + settings.ack_still_after
+        flushed = False
+        while not speaker.wait(0.05):
+            now = time.monotonic()
+            if worker.is_alive() and speaker.idle and now >= next_still:  # long wait, nothing to say yet
+                line = acks.still(still_n)
+                if line:
+                    try:
+                        speaker.say_audio(acks.audio(line), line)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    still_n += 1
+                next_still = now + settings.ack_still_after * 2
+            if settings.barge_in and speaker.started.is_set():
+                if not flushed:  # drop what the mic picked up while AMO was thinking
+                    mic.flush()
+                    flushed = True
+                seg = mic.listen_once(timeout=0.4, max_seconds=3.0)
+                if seg is not None:
+                    heard = transcribe_array(seg, model=settings.wake_model, prompt=WAKE_PROMPT)
+                    hit, rest = barge_in(heard, " ".join(speaker.spoken))
+                    if hit:
+                        speaker.stop()
+                        interrupt = rest
+                        print(f"   ✋ heard “{heard}” — stopping")
+                        break
+        mic.flush()
+        return result.get("reply", ""), interrupt
+
     threading.Thread(target=acks.prewarm, daemon=True).start()
 
     print("Loading speech models …")
@@ -388,6 +509,7 @@ def run(verbose: bool = False) -> None:
         chime=ding,
         ack=ack,
         wait=wait,
+        respond=respond if settings.stream_speech else None,
         verbose=verbose,
     )
     if verbose:

@@ -72,26 +72,40 @@ class Ollama:
         return r.json().get("message", {"role": "assistant", "content": ""})
 
     def stream_chat(
-        self, messages: list[dict[str, Any]], model: str | None = None
-    ) -> Iterator[str]:
-        payload = {"model": model or settings.chat_model, "messages": messages, "stream": True,
-                   **runtime_params(model or settings.chat_model)}
+        self,
+        messages: list[dict[str, Any]],
+        model: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Streaming chat. Yields {"content": piece} as text arrives and {"tool_calls": [...]}
+        if the model decides to call tools."""
+        payload: dict[str, Any] = {"model": model or settings.chat_model, "messages": messages, "stream": True,
+                                   **runtime_params(model or settings.chat_model)}
+        if tools:
+            payload["tools"] = tools
         try:
-            with httpx.stream(
-                "POST", f"{self.base_url}/api/chat", json=payload, timeout=self.timeout
-            ) as r:
+            with httpx.stream("POST", f"{self.base_url}/api/chat", json=payload, timeout=self.timeout) as r:
+                if r.status_code == 404:
+                    raise LLMError(f"The AI model '{payload['model']}' isn't downloaded yet. "
+                                   f"In Terminal run:  ollama pull {payload['model']}")
+                if r.status_code == 400:
+                    r.read()
+                    if "does not support tools" in r.text:
+                        raise LLMError(f"The model '{payload['model']}' can't use tools. Try: amo use llama3.2:3b")
                 r.raise_for_status()
                 for line in r.iter_lines():
                     if not line:
                         continue
                     chunk = json.loads(line)
-                    piece = chunk.get("message", {}).get("content", "")
-                    if piece:
-                        yield piece
+                    msg = chunk.get("message", {})
+                    if msg.get("tool_calls"):
+                        yield {"tool_calls": msg["tool_calls"]}
+                    if msg.get("content"):
+                        yield {"content": msg["content"]}
                     if chunk.get("done"):
                         break
         except httpx.HTTPError as e:
-            raise LLMError(f"Ollama stream failed: {e}") from e
+            raise LLMError(f"Can't reach Ollama at {self.base_url} — is the Ollama app running? ({e})") from e
 
     def embed(self, text: str, model: str | None = None) -> list[float] | None:
         """Return an embedding vector, or None if the embed model isn't available."""

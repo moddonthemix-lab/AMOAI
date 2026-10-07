@@ -128,6 +128,24 @@ Tuning: `amo listen -v` prints what it hears. If it wakes too easily set `AMO_WA
 in `.env`; if it misses you, `2`. If Whisper keeps spelling the name differently, add it:
 `AMO_WAKE_WORDS=amor,emu`.
 
+**Speak while thinking:** AMO starts talking as soon as the first sentence of the answer is
+written, instead of waiting for the whole thing. **Interrupt any time:** say "AMO, stop",
+"hold on" or "never mind" — or just ask something else ("AMO, stop — what's my schedule?").
+AMO ignores its own voice coming back through the speaker. Turn off with `AMO_STREAM_SPEECH=0`
+or `AMO_BARGE_IN=0`.
+
+### AMO's body (Raspberry Pi or any computer on your Wi-Fi)
+
+The body is just ears and a mouth — the thinking stays on your Mac (the brain).
+
+1. On the Mac: `amo lan on` — prints the brain's address and key (other devices need the key; your
+   Mac never does).
+2. On the device: install AMO (`pip install -e ".[voice]"`), then
+   `amo device --brain http://Your-Mac.local:8765 --key THE_KEY`
+
+The device streams "Got it" and each sentence's audio from the brain as it's ready, supports
+interruptions and "good morning", and works with any USB mic/speaker. `amo lan off` closes it again.
+
 ### AMO's voice
 
 AMO speaks as **Obadiah**, a clean, deadpan British voice (Piper), with a dry-wit personality to match.

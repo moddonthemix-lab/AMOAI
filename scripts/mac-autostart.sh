@@ -58,7 +58,9 @@ case "${1:-install}" in
         plist "$OLLAMA_LABEL" "$OBIN" serve
       fi
     fi
-    plist "$AMO_LABEL" "$ROOT/.venv/bin/amo" serve --host 127.0.0.1 --port 8765
+    # AMO_LAN=1 (set by `amo lan on`) lets a body device on your Wi-Fi reach the brain.
+    HOST=127.0.0.1; [[ "$(env_val AMO_LAN)" == "1" ]] && HOST=0.0.0.0
+    plist "$AMO_LABEL" "$ROOT/.venv/bin/amo" serve --host "$HOST" --port 8765
     if [[ -x .venv-webui/bin/open-webui ]]; then
       KEY="$(env_val AMO_API_KEY)"
       plist "$WEBUI_LABEL" "$ROOT/.venv-webui/bin/open-webui" serve --port 3000 -- \

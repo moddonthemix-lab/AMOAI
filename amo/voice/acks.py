@@ -81,6 +81,9 @@ def wait_with_updates(worker, speak, first_after: float | None = None) -> None:
         speak(line)
         n += 1
         delay = delay * 2  # 7s → then ~14s later
+
+
+def audio(phrase: str) -> bytes:
     """WAV for a phrase in AMO's current voice, cached after the first time."""
     from .tts import synthesize
 

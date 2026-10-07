@@ -29,9 +29,9 @@ def _get_model(name: str | None = None):
         return _models[name]
 
 
-def transcribe(audio: bytes | str, language: str | None = "en") -> str:
-    """Transcribe a WAV/MP3/WebM file path or raw file bytes."""
-    model = _get_model()
+def transcribe(audio: bytes | str, language: str | None = "en", size: str | None = None) -> str:
+    """Transcribe a WAV/MP3/WebM file path or raw file bytes (size: e.g. "tiny.en")."""
+    model = _get_model(size)
     src = io.BytesIO(audio) if isinstance(audio, (bytes, bytearray)) else audio
     segments, _info = model.transcribe(src, language=language, vad_filter=True, beam_size=1)
     return " ".join(s.text.strip() for s in segments).strip()

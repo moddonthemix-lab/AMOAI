@@ -11,6 +11,8 @@
   amo use MODEL           download a model and switch AMO to it (e.g. amo use gemma4:e2b)
   amo bench [MODEL ...]   time models on this computer and check they can save data
   amo listen              hands-free: say "Hey AMO" (add -v to see what it hears)
+  amo lan on|off|status   let a body device on your Wi-Fi (Raspberry Pi) reach this Mac
+  amo device --brain URL --key KEY   run AMO's body (mic + speaker) against a brain on your network
   amo mic-test            check the microphone, speech recognition and voice step by step
   amo voices              list voice presets and the British voices on this Mac
   amo try-voice [PRESET]  hear a voice before choosing it
@@ -23,6 +25,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import logging
 import sys
@@ -210,6 +213,52 @@ def cmd_mic_test(_a):
     (ok if get_llm().list_models() else bad)(
         "Ollama is running" if get_llm().list_models() else "Ollama isn't running — open the Ollama app")
     print("\nIf everything is ✓, run:  amo listen")
+
+
+def _lan_ip() -> str:
+    import socket
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("10.255.255.255", 1))
+            return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+
+
+def cmd_lan(a):
+    import secrets
+    import socket
+    import subprocess
+
+    from .config import PROJECT_ROOT
+
+    if a.action == "status":
+        print(f"LAN access: {'ON' if os.environ.get('AMO_LAN') == '1' else 'off'}")
+        return
+    if a.action == "on":
+        key = settings.api_key or secrets.token_hex(16)
+        _set_env("AMO_API_KEY", key)
+        _set_env("AMO_LAN", "1")
+    else:
+        _set_env("AMO_LAN", "0")
+    script = PROJECT_ROOT / "scripts" / "mac-autostart.sh"
+    if sys.platform == "darwin" and script.exists():
+        subprocess.run([str(script), "install"], check=False)
+    if a.action == "on":
+        host = socket.gethostname().split(".")[0]
+        print("\nAMO's brain is now reachable on your Wi-Fi (other devices need the key; this Mac doesn't).")
+        print(f"  Address:  http://{host}.local:8765   (or http://{_lan_ip()}:8765)")
+        print(f"  Key:      {key}")
+        print(f"\nOn the Raspberry Pi:\n  amo device --brain http://{host}.local:8765 --key {key}")
+    else:
+        print("LAN access off — only this Mac can reach AMO.")
+
+
+def cmd_device(a):
+    from .voice.device import run
+
+    run(a.brain, a.key or settings.api_key, verbose=a.verbose)
 
 
 def cmd_setup_voice(_a):
@@ -494,6 +543,14 @@ def main(argv: list[str] | None = None) -> None:
     ls = sub.add_parser("listen", help='hands-free mode: say "Hey AMO"')
     ls.add_argument("-v", "--verbose", action="store_true", help="print everything it hears")
     ls.set_defaults(fn=cmd_listen)
+    ln = sub.add_parser("lan", help="let a body device on your Wi-Fi reach this Mac")
+    ln.add_argument("action", choices=["on", "off", "status"])
+    ln.set_defaults(fn=cmd_lan)
+    dv = sub.add_parser("device", help="run AMO's body (mic + speaker) against a brain on your network")
+    dv.add_argument("--brain", required=True, help="e.g. http://Your-Mac.local:8765")
+    dv.add_argument("--key", default="", help="the brain's AMO_API_KEY")
+    dv.add_argument("-v", "--verbose", action="store_true")
+    dv.set_defaults(fn=cmd_device)
     sub.add_parser("mic-test", help="check mic, speech recognition and voice").set_defaults(fn=cmd_mic_test)
     sub.add_parser("setup-voice", help="download the default Piper voice").set_defaults(fn=cmd_setup_voice)
 

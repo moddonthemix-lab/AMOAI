@@ -262,3 +262,49 @@ def test_long_waits_get_progress_updates(monkeypatch):
     said.clear()
     acks.wait_with_updates(quick, said.append, first_after=0.1)
     assert said == []
+
+
+def test_barge_in_vs_echo():
+    from amo.voice.listen import barge_in
+
+    said = "AMZN B-grade long. Monthly reversal triggers above 261.12, target 287.20, stop 244.30."
+    assert barge_in("stop 244.30", said) == (False, "")            # AMO hearing itself say "stop"
+    assert barge_in("target 287.20 stop", said) == (False, "")
+    assert barge_in("AMO stop", said) == (True, "stop")
+    assert barge_in("hold on", said) == (True, "")
+    assert barge_in("Hey AMO, what's my schedule today?", said) == (True, "what's my schedule today")
+    assert barge_in("never mind what's tesla doing", said) == (True, "what's tesla doing")
+    assert barge_in("the music is loud in here", said) == (False, "")
+
+
+def test_interrupt_then_new_question():
+    asked, said, chimes = [], [], []
+    t = {"a": "Hey AMO, what's on today?", "b": "and tomorrow", "c": "what time is it"}
+    replies = iter([("You have three sessions…", "what's tesla doing"), ("Tesla is…", None),
+                    ("Tomorrow you have…", ""), ("x", None)])
+
+    def respond(history, command):
+        asked.append(command)
+        return next(replies)
+
+    lst = Listener(segments=lambda timeout: iter(()),
+                   transcribe_wake=lambda s: t[s], transcribe_command=lambda s: t[s],
+                   ask=lambda h: "", say=said.append, respond=respond, log=lambda *_: None,
+                   chime=lambda: chimes.append(1))
+    queue_ = ["b", "c"]
+    lst.next_utterance = lambda timeout: queue_.pop(0) if queue_ else None
+    lst.converse("what's on today")
+    # interrupted → answered "what's tesla doing" straight away; then follow-up "and tomorrow";
+    # interrupted with just "stop" → chime, listened again → "what time is it" (instant, no model)
+    assert asked == ["what's on today", "what's tesla doing", "and tomorrow"]
+    assert chimes == [1] and said and said[-1].startswith("It's ")
+
+
+def test_ack_audio_renders_and_caches(monkeypatch):
+    from amo.voice import acks, tts
+
+    calls = []
+    monkeypatch.setattr(tts, "synthesize", lambda text, voice=None: calls.append(text) or b"wav")
+    acks._cache.clear()
+    assert acks.audio("Got it.") == b"wav" and acks.audio("Got it.") == b"wav"
+    assert calls == ["Got it."]  # rendered once, then instant

@@ -119,6 +119,41 @@ async def chat_completions(req: ChatRequest):
     # memory or learning; pass them straight to the model.
     last = str(messages[-1].get("content", "")) if messages else ""
     is_task = last.lstrip().startswith("### Task:")
+    cid = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+    created = int(time.time())
+
+    def chunk(delta: dict, finish: str | None = None) -> str:
+        return "data: " + json.dumps({
+            "id": cid, "object": "chat.completion.chunk", "created": created, "model": MODEL_ID,
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+        }) + "\n\n"
+
+    if req.stream and not is_task:
+        # Real streaming: text appears in Open WebUI as AMO writes it.
+        import queue as _queue
+        import threading as _threading
+
+        pieces: _queue.Queue = _queue.Queue()
+
+        def work() -> None:
+            try:
+                Agent().chat(messages, "webui", on_text=pieces.put)
+            except LLMError as e:
+                pieces.put(f"⚠ {e}. Is Ollama running at {settings.ollama_url}?")
+            finally:
+                pieces.put(None)
+
+        _threading.Thread(target=work, daemon=True).start()
+
+        def live():
+            yield chunk({"role": "assistant"})
+            while (piece := pieces.get()) is not None:
+                yield chunk({"content": piece})
+            yield chunk({}, "stop")
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(live(), media_type="text/event-stream")
+
     try:
         if is_task:
             msg = await run_in_threadpool(get_llm().chat, messages, settings.fast_model)
@@ -129,8 +164,6 @@ async def chat_completions(req: ChatRequest):
     except LLMError as e:
         raise HTTPException(502, f"{e}. Is Ollama running at {settings.ollama_url}?") from e
 
-    cid = f"chatcmpl-{uuid.uuid4().hex[:12]}"
-    created = int(time.time())
     if not req.stream:
         return {
             "id": cid, "object": "chat.completion", "created": created, "model": MODEL_ID,
@@ -140,17 +173,8 @@ async def chat_completions(req: ChatRequest):
         }
 
     def sse():
-        def chunk(delta: dict, finish: str | None = None) -> str:
-            return "data: " + json.dumps({
-                "id": cid, "object": "chat.completion.chunk", "created": created, "model": MODEL_ID,
-                "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
-            }) + "\n\n"
-
         yield chunk({"role": "assistant"})
-        words = content.split(" ")
-        for i in range(0, len(words), 4):
-            piece = " ".join(words[i:i + 4]) + (" " if i + 4 < len(words) else "")
-            yield chunk({"content": piece})
+        yield chunk({"content": content})
         yield chunk({}, "stop")
         yield "data: [DONE]\n\n"
 
@@ -164,7 +188,8 @@ async def transcriptions(file: UploadFile = File(...), model: str = Form("whispe
 
     data = await file.read()
     try:
-        text = await run_in_threadpool(transcribe, data, language or "en")
+        size = model if model and not model.startswith("whisper") else None  # "tiny.en" for wake checks
+        text = await run_in_threadpool(transcribe, data, language or "en", size)
     except VoiceUnavailable as e:
         raise HTTPException(503, str(e)) from e
     return {"text": text}
@@ -206,6 +231,79 @@ async def ack(text: str = "", kind: str = "", n: int = 0):
     except VoiceUnavailable as e:
         raise HTTPException(503, str(e)) from e
     return Response(wav, media_type="audio/wav", headers={"X-Ack-Text": phrase})
+
+
+# ======================================================== body devices
+class ConverseRequest(BaseModel):
+    text: str
+    history: list[ChatMessage] = []
+
+
+@app.post("/api/converse", dependencies=[Depends(auth)])
+def converse(req: ConverseRequest):
+    """For a speaker/mic device (Raspberry Pi, ESP32 …): send what was said, get back newline-
+    delimited JSON as it's ready — the "Got it", then each spoken sentence with its audio (base64
+    WAV), then the full reply. The device can start playing the first sentence immediately."""
+    import base64
+    import queue as _queue
+    import threading as _threading
+
+    from ..voice import acks
+    from ..voice.speaker import split_ready
+    from ..voice.tts import synthesize
+
+    out: _queue.Queue = _queue.Queue()
+    pieces: _queue.Queue = _queue.Queue()
+    history = [m.model_dump() for m in req.history] + [{"role": "user", "content": req.text}]
+
+    def audio_line(text: str, wav: bytes, kind: str = "sentence") -> str:
+        return json.dumps({"type": kind, "text": text, "wav": base64.b64encode(wav).decode()}) + "\n"
+
+    def think() -> None:
+        try:
+            reply = Agent().chat(history, channel="voice", on_text=pieces.put)["content"]
+            pieces.put(("done", reply))
+        except LLMError as e:
+            pieces.put(f"Sorry, I couldn't do that: {e}")
+            pieces.put(("done", ""))
+
+    def speak() -> None:
+        phrase = acks.pick(req.text)
+        if phrase:
+            try:
+                out.put(audio_line(phrase, acks.audio(phrase), "ack"))
+            except Exception:  # noqa: BLE001
+                pass
+        buf, said_any, still_n = "", False, 0
+        deadline = time.monotonic() + settings.ack_still_after
+        while True:
+            try:
+                item = pieces.get(timeout=0.2)
+            except _queue.Empty:
+                if not said_any and time.monotonic() > deadline and (line := acks.still(still_n)):
+                    out.put(audio_line(line, acks.audio(line), "ack"))
+                    still_n += 1
+                    deadline = time.monotonic() + settings.ack_still_after * 2
+                continue
+            if isinstance(item, tuple):  # finished
+                if buf.strip():
+                    out.put(audio_line(buf.strip(), synthesize(buf.strip())))
+                out.put(json.dumps({"type": "done", "reply": item[1]}) + "\n")
+                out.put(None)
+                return
+            ready, buf = split_ready(buf + item)
+            for sentence in ready:
+                said_any = True
+                out.put(audio_line(sentence, synthesize(sentence)))
+
+    _threading.Thread(target=think, daemon=True).start()
+    _threading.Thread(target=speak, daemon=True).start()
+
+    def stream():
+        while (line := out.get()) is not None:
+            yield line
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
 
 
 # ======================================================== native chat
