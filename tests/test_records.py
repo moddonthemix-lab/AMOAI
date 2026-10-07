@@ -77,3 +77,45 @@ def test_dashboard_api_and_live_version(db, llm):
         assert c.delete(f"/api/records/goals/{g['id']}").json()["deleted"]
         assert c.get("/api/records/goals").json() == []
         assert "fields" in c.get("/api/schema").json()["resale"]
+
+
+@pytest.mark.parametrize("said", [
+    "Delete the goal, make one beat.",          # Whisper's comma
+    "Delete the goal make 1 beat",              # digits vs words
+    "Remove make one beat from my goals.",
+    "Hey AMO delete the make one beat goal",
+    "delete the goal I just added",
+])
+def test_spoken_goal_deletes(db, llm, said):
+    records.create("goals", {"title": "Post a reel", "cadence": "weekly"}, db)
+    records.create("goals", {"title": "Make one beat"}, db)
+    out = Agent(db).chat([{"role": "user", "content": said}])
+    assert llm.calls == [], said
+    assert out["content"] == "Deleted goal “Make one beat”.", said
+    assert [g["title"] for g in records.list_records("goals", db=db)] == ["Post a reel"]
+
+
+def test_delete_all_and_by_cadence(db, llm):
+    for t, c in (("Make one beat", "daily"), ("Drink water", "daily"), ("Post a reel", "weekly")):
+        records.create("goals", {"title": t, "cadence": c}, db)
+    out = Agent(db).chat([{"role": "user", "content": "Delete my daily goals."}])
+    assert out["content"] == "Deleted 2 daily goals: Make one beat, Drink water."
+    out = Agent(db).chat([{"role": "user", "content": "clear all my goals"}])
+    assert out["content"] == "Deleted 1 goals: Post a reel." or out["content"].startswith("Deleted 1 goal")
+    assert records.list_records("goals", db=db) == []
+    out = Agent(db).chat([{"role": "user", "content": "delete my goals"}])
+    assert out["content"] == "You don't have any goals to delete."
+
+
+def test_unnamed_delete_asks_when_several(db, llm):
+    records.create("goals", {"title": "Make one beat"}, db)
+    records.create("goals", {"title": "Post a reel"}, db)
+    out = Agent(db).chat([{"role": "user", "content": "Can you delete the daily goal?"}])
+    assert "which goal? You have: Make one beat; Post a reel" in out["content"]
+    records.delete("goals", "Post a reel", db)
+    out = Agent(db).chat([{"role": "user", "content": "delete that goal"}])
+    assert out["content"] == "Deleted goal “Make one beat”."
+    # never delete on a one-letter "name" (old bug: "goals" → "s")
+    from amo.fastpath import match
+
+    assert match("delete my goals")[0] == "delete_all_records"

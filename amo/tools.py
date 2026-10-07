@@ -430,11 +430,21 @@ def update_record(kind: str, item: str, changes: dict):
 @tool("Delete an item for good: a goal, client, session, payment, resale item, trade, "
       "trading rule, Cravvr task or memory.",
       kind=(_KINDS, "What kind of item.", True),
-      item=("string", "The item's name (or #id).", True))
-def delete_record(kind: str, item: str):
+      item=("string", "The item's name (or #id). Omit if there's only one.", False))
+def delete_record(kind: str, item: str = ""):
     from . import records
 
     return records.delete(kind, item, get_db())
+
+
+@tool("Delete ALL items of a kind at once, e.g. all goals, all daily goals, all Cravvr tasks. "
+      "Only when the user clearly asks for all of them.",
+      kind=(_KINDS, "What kind of item.", True),
+      cadence=("enum:daily|weekly|monthly", "Goals only: just this kind of goal.", False))
+def delete_all_records(kind: str, cadence: str | None = None):
+    from . import records
+
+    return records.delete_many(kind, get_db(), cadence)
 
 
 # ---------------------------------------------------------------- web
@@ -540,8 +550,8 @@ GROUPS: dict[str, tuple[list[str], str]] = {
         r"overview|summary|brief|dashboard|this (week|month)|today|plan my day|what.?s (up|next|on)",
     ),
     "edit": (
-        ["find_records", "update_record", "delete_record"],
-        r"delete|remove|get rid|drop|erase|cancel|change|update|edit|rename|fix|wrong|move|"
+        ["find_records", "update_record", "delete_record", "delete_all_records"],
+        r"delete|remove|get rid|drop|erase|clear|wipe|cancel|change|update|edit|rename|fix|wrong|move|"
         r"switch|instead|correct|mistake|undo|show (me )?(my|all)|list (my|all)",
     ),
     "markets": (

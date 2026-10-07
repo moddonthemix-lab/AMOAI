@@ -21,14 +21,26 @@ REMEMBER_RE = re.compile(
 )
 
 
-_KIND_WORDS = (r"(?P<kind>daily goal|weekly goal|monthly goal|goal|client|cravvr task|task|resale item|item|"
-               r"trading rule|rule|trade|session|booking|payment|memory)")
-DELETE_RE = re.compile(
-    _LEAD + r"(?:delete|remove|get rid of|drop|erase|scrap)\s+(?:the\s+|my\s+|that\s+|this\s+)?"
-    + _KIND_WORDS + r"\s*(?:called\s+|named\s+|for\s+|:|-|—)?\s*(?P<name>.+?)[.!]*$", re.I)
+_DEL = r"(?:delete|remove|get rid of|drop|erase|scrap|clear|wipe|take off|cross off)"
+_KINDS_SINGULAR = r"(?:(?P<cad>daily|weekly|monthly)\s+)?(?P<kind>goal|client|cravvr task|task|resale item|item|trading rule|rule|trade|session|booking|payment|memory)"
+_KINDS_PLURAL = (r"(?:(?P<cad>daily|weekly|monthly)\s+)?(?P<kind>goals|clients|cravvr tasks|tasks|resale items|items|"
+                 r"trading rules|rules|trades|sessions|bookings|payments|memories)")
+DELETE_ALL_RE = re.compile(  # "delete all my daily goals", "clear my goals"
+    _LEAD + _DEL + r"\s+(?:all\s+)?(?:of\s+)?(?:my\s+|the\s+)?" + _KINDS_PLURAL + r"$", re.I)
+DELETE_RE = re.compile(  # "delete the goal make one beat", "delete my daily goal: make one beat"
+    _LEAD + _DEL + r"\s+(?:the\s+|my\s+|that\s+|this\s+)?" + _KINDS_SINGULAR
+    + r"\b\s*(?:called\s+|named\s+|for\s+|about\s+|:|-|—)?\s*(?P<name>.*)$", re.I)
 DELETE_AFTER_RE = re.compile(  # "delete the make one beat goal"
-    _LEAD + r"(?:delete|remove|get rid of|drop|erase|scrap)\s+(?:the\s+|my\s+|that\s+)?(?P<name>.+?)\s+"
-    + _KIND_WORDS + r"[.!]*$", re.I)
+    _LEAD + _DEL + r"\s+(?:the\s+|my\s+)?(?P<name>.+?)\s+" + _KINDS_SINGULAR + r"$", re.I)
+DELETE_FROM_RE = re.compile(  # "remove make one beat from my goals"
+    _LEAD + _DEL + r"\s+(?P<name>.+?)\s+(?:from|off)\s+(?:my\s+|the\s+)?" + _KINDS_PLURAL + r"(?:\s+list)?$", re.I)
+
+
+def _clean_sentence(text: str) -> str:
+    """Speech-to-text adds commas and full stops in odd places — drop them."""
+    t = re.sub(r"[,;]+", " ", text)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t.rstrip(" .!?")
 
 
 # "delete that trade" refers to the conversation — leave those to the AI, which has the context.
@@ -36,10 +48,18 @@ _CONTEXT_WORDS = {"that", "this", "it", "them", "those", "these", "last", "last 
                   "latest", "the latest", "one", "that one", "this one", "previous", "same"}
 
 
+_KIND_MAP = {"task": "cravvr", "cravvr task": "cravvr", "item": "resale", "resale item": "resale",
+             "booking": "sessions", "rule": "rules", "trading rule": "rules"}
+
+
 def _kind(word: str) -> str:
     w = word.lower()
-    return "goals" if "goal" in w else {"task": "cravvr", "cravvr task": "cravvr", "item": "resale",
-                                        "resale item": "resale", "booking": "sessions"}.get(w, w)
+    if "goal" in w:
+        return "goals"
+    singular = w[:-1] if w.endswith("s") and w not in ("goals",) else w
+    if w == "memories":
+        singular = "memory"
+    return _KIND_MAP.get(singular, singular)
 
 
 _SYM = r"\$?(?P<sym>[A-Za-z][A-Za-z0-9.=\-^&]{0,9}(?: futures)?)"
@@ -59,6 +79,8 @@ CHART_SYM_RE = re.compile(  # "pull up the SPY weekly chart"
     + r"\s+(?:(?P<tf>daily|weekly|monthly|hourly)\s+)?chart[.!?]*$", re.I)
 _TF = {"daily": "D", "weekly": "W", "monthly": "M", "hourly": "60", "60 minute": "60", "60minute": "60"}
 _NOT_SYMBOLS = {"it", "that", "this", "me", "my", "the", "market", "markets", "chart"}
+
+
 
 
 def _symbol(m: re.Match) -> str | None:
@@ -117,11 +139,23 @@ def match(text: str) -> tuple[str, dict[str, Any]] | None:
         if m and _symbol(m):
             tf = (m.group("tf") or "daily").lower()
             return "show_chart", {"symbol": _symbol(m), "timeframe": _TF.get(tf, "D")}
-    for rx in (DELETE_RE, DELETE_AFTER_RE):
-        m = rx.match(t)
-        name = m.group("name").strip(" :-—\"'“”").lower() if m else ""
-        if m and name and name not in _CONTEXT_WORDS and len(name.split()) <= 10:
-            return "delete_record", {"kind": _kind(m.group("kind")), "item": m.group("name").strip(" :-—\"'“”")}
+    d = _clean_sentence(t)
+    m = DELETE_ALL_RE.match(d)
+    if m:
+        args = {"kind": _kind(m.group("kind"))}
+        if m.group("cad"):
+            args["cadence"] = m.group("cad").lower()
+        return "delete_all_records", args
+    for rx in (DELETE_FROM_RE, DELETE_RE, DELETE_AFTER_RE):
+        m = rx.match(d)
+        if not m:
+            continue
+        name = m.group("name").strip(" :-—\"'“”").strip()
+        if name.lower() in _CONTEXT_WORDS:
+            return None  # "delete that" — the AI has the conversation context
+        if len(name) == 1 or len(name.split()) > 10:
+            continue
+        return "delete_record", {"kind": _kind(m.group("kind")), "item": name}
     m = GOAL_RE.match(t)
     if m and len(m.group("title").split()) <= 12:
         title = m.group("title").strip(" :-—")

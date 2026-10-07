@@ -135,6 +135,8 @@ CONFIRM: dict[str, Callable[[dict, dict], str]] = {
     "update_cravvr_task": lambda r, a: f"Cravvr task “{r.get('title')}” is now {r.get('status')}.",
     "send_notification": lambda r, a: "Sent.",
     "delete_record": lambda r, a: f"Deleted {r['label']} “{r['name']}”.",
+    "delete_all_records": lambda r, a: (f"Deleted {r['deleted']} {r['what']}: " + ", ".join(r["names"][:8]) + "."
+                                        if r["deleted"] else f"You don't have any {r['what']} to delete."),
     "update_record": lambda r, a: f"Updated {r['label']} “{r['name']}”: "
                                   + ", ".join(f"{k.replace('_', ' ')} → {v}" for k, v in r["changes"].items()) + ".",
 }

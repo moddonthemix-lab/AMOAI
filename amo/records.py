@@ -274,19 +274,56 @@ def _describe(ent: Entity, row: dict[str, Any]) -> str:
     return f"#{row['id']}"
 
 
-def resolve(kind: str, item: int | str, db: Database | None = None) -> dict[str, Any]:
-    """Find one item by id or (part of) its name. Raises if missing or ambiguous."""
+_NUMBER_WORDS = {"zero": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
+                 "seven": "7", "eight": "8", "nine": "9", "ten": "10", "a": "1", "an": "1"}
+_RECENT = {"i just added", "just added", "the one i just added", "the one i added", "last one", "the last one",
+           "latest", "the latest", "latest one", "newest", "the newest", "most recent", "the most recent",
+           "last", "new one", "the new one"}
+
+
+def _norm(text: str) -> str:
+    """Lowercase, no punctuation, number words as digits — for forgiving name matching."""
+    import re
+
+    words = re.sub(r"[^a-z0-9 ]+", " ", str(text).lower()).split()
+    return " ".join(_NUMBER_WORDS.get(w, w) for w in words if w not in ("the", "my"))
+
+
+def _name_of(ent: Entity, row: dict[str, Any]) -> str:
+    return " ".join(str(row.get(k) or "") for k in ent.name_fields + ("client_name",))
+
+
+def resolve(kind: str, item: int | str | None, db: Database | None = None) -> dict[str, Any]:
+    """Find one item by id or (part of) its name. Forgiving about punctuation, "one" vs "1",
+    and close wording. Empty → the only item if there's just one; "the one I just added" → newest.
+    Raises if missing or ambiguous (listing the choices)."""
+    from difflib import SequenceMatcher
+
     db = db or get_db()
     ent = entity(kind)
-    ref = str(item).strip().lstrip("#")
+    ref = str(item or "").strip().strip(" .,!?;:\"'“”").lstrip("#")
     if ref.isdigit():
         row = get(ent.kind, int(ref), db)
         if not row:
             raise ValueError(f"no {ent.label} #{ref}")
         return row
+
+    everything = list_records(ent.kind, None, db)
+    if not everything:
+        raise ValueError(f"you don't have any {ent.title.lower()} yet")
+    choices = "; ".join(_describe(ent, m) for m in everything[:6])
+    if not ref:
+        if len(everything) == 1:
+            return everything[0]
+        raise ValueError(f"which {ent.label}? You have: {choices}")
+    if ref.lower() in _RECENT:
+        return max(everything, key=lambda r: r["id"])
+
     matches = list_records(ent.kind, ref, db)
-    exact = [m for m in matches if any(str(m.get(k) or "").lower() == ref.lower()
-                                       for k in ent.name_fields + ("client_name",))]
+    if not matches:  # forgiving pass: punctuation, number words, word overlap
+        target = _norm(ref)
+        matches = [m for m in everything if target and target in _norm(_name_of(ent, m))]
+    exact = [m for m in matches if any(_norm(m.get(k) or "") == _norm(ref) for k in ent.name_fields + ("client_name",))]
     if len(exact) == 1:
         return exact[0]
     if ent.kind == "sessions" and len(matches) > 1:  # prefer the next booked session
@@ -296,10 +333,34 @@ def resolve(kind: str, item: int | str, db: Database | None = None) -> dict[str,
             return upcoming[0]
     if len(matches) == 1:
         return matches[0]
-    if not matches:
-        raise ValueError(f"I couldn't find a {ent.label} matching “{ref}”")
+    if not matches:  # last resort: closest wording, if it's clearly the best
+        scored = sorted(((SequenceMatcher(None, _norm(ref), _norm(_name_of(ent, m))).ratio(), m) for m in everything),
+                        key=lambda x: x[0], reverse=True)
+        best = scored[0]
+        runner = scored[1][0] if len(scored) > 1 else 0
+        if best[0] >= 0.6 and best[0] - runner >= 0.15:
+            return best[1]
+        raise ValueError(f"I couldn't find a {ent.label} matching “{ref}”. You have: {choices}")
     options = "; ".join(f"#{m['id']} {_describe(ent, m)}" for m in matches[:6])
     raise ValueError(f"more than one {ent.label} matches “{ref}”: {options}. Which one?")
+
+
+def delete_many(kind: str, db: Database | None = None, cadence: str | None = None) -> dict[str, Any]:
+    """Delete every item of a kind (goals can be limited to daily/weekly/monthly)."""
+    db = db or get_db()
+    ent = entity(kind)
+    rows = list_records(ent.kind, None, db)
+    if cadence and ent.kind == "goals":
+        rows = [r for r in rows if r.get("cadence") == cadence]
+    names = [_describe(ent, r) for r in rows]
+    for r in rows:
+        if ent.soft_delete:
+            db.update(ent.table, r["id"], {ent.soft_delete: 1})
+        else:
+            with db.tx() as c:
+                c.execute(f"DELETE FROM {ent.table} WHERE id = ?", (r["id"],))
+    what = f"{cadence + ' ' if cadence else ''}{ent.title.lower()}"
+    return {"deleted": len(rows), "kind": ent.kind, "what": what, "names": names}
 
 
 def create(kind: str, data: dict[str, Any], db: Database | None = None) -> dict[str, Any]:
