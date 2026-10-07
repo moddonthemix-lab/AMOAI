@@ -208,3 +208,57 @@ def test_blocked_mic_warns(monkeypatch, capsys):
     except (StopIteration, RuntimeError):
         pass
     assert "blocking it for Terminal" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("written, spoken", [
+    ("Booked Lil Jay (Jay Carter) for Fri Jan 4 at 7 PM — 3h recording at $50/h ($150).",
+     "Booked Lil Jay, Jay Carter, for Friday January 4th at 7 PM, 3 hours recording at 50 dollars an hour, 150 dollars."),
+    ("AMZN: Monthly 2D-2U reversal (R:R 1.55)", "A M Z N: Monthly two down, two up reversal, risk to reward 1.55"),
+    ("NQ=F futures is at 31,264.25.", "N Q futures is at 31,264.25."),
+    ("Prior bar 758.79–772.65 on 2030-01-04 19:00", "Prior bar 758.79 to 772.65 on January 4th at 7 PM"),
+    ("Logged $120.50 from Ana.", "Logged 120 dollars and 50 cents from Ana."),
+    ("**Done** ✅ — streak 🔥", "Done, streak"),
+])
+def test_speakable(written, spoken):
+    from amo.voice.speakable import to_speech
+
+    assert to_speech(written) == spoken
+
+
+def test_polish_adds_lead_in_and_levels_volume():
+    import io
+    import wave
+
+    import numpy as np
+
+    from amo.voice.tts import polish
+
+    rate = 22050
+    quiet = (np.sin(2 * np.pi * 200 * np.arange(rate) / rate) * 800).astype(np.int16)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1), w.setsampwidth(2), w.setframerate(rate), w.writeframes(quiet.tobytes())
+    with wave.open(io.BytesIO(polish(buf.getvalue()))) as w:
+        x = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768
+    assert np.all(x[: int(0.15 * rate)] == 0)           # silent lead-in so the first word isn't clipped
+    assert np.sqrt(np.mean(x ** 2)) > 800 / 32768 * 2   # quiet input brought up to speaking level
+
+
+def test_long_waits_get_progress_updates(monkeypatch):
+    import threading
+    import time
+
+    from amo.config import settings
+    from amo.voice import acks
+
+    monkeypatch.setattr(settings, "acks", True)
+    said = []
+    worker = threading.Thread(target=lambda: time.sleep(0.35))
+    worker.start()
+    acks.wait_with_updates(worker, said.append, first_after=0.1)
+    assert said == ["Still working on it.", "Almost there."]
+    quick = threading.Thread(target=lambda: None)
+    quick.start()
+    said.clear()
+    acks.wait_with_updates(quick, said.append, first_after=0.1)
+    assert said == []

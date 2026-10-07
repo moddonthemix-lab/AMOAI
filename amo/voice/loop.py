@@ -87,6 +87,13 @@ def run(speak: bool = True) -> None:
                 play_wav(acks.audio(phrase))
             except Exception:  # noqa: BLE001 — acks are optional
                 pass
+        if phrase:
+            def _say(line: str) -> None:
+                try:
+                    play_wav(acks.audio(line))
+                except Exception:  # noqa: BLE001
+                    pass
+            acks.wait_with_updates(worker, _say)
         worker.join()
         reply = result.get("reply", "")
         history.append({"role": "assistant", "content": reply})

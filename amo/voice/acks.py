@@ -31,7 +31,7 @@ _lock = threading.Lock()
 
 
 def phrases(kind: str) -> list[str]:
-    raw = settings.ack_think if kind == "think" else settings.ack_action
+    raw = {"think": settings.ack_think, "action": settings.ack_action, "still": settings.ack_still}[kind]
     return [p.strip() for p in raw.split("|") if p.strip()]
 
 
@@ -57,7 +57,30 @@ def pick(request: str) -> str | None:
     return choice
 
 
-def audio(phrase: str) -> bytes:
+def still(n: int) -> str | None:
+    """The n-th "still working" line (0 = first) for a long wait, or None when there are no more."""
+    if not settings.acks:
+        return None
+    options = phrases("still")
+    return options[n] if n < len(options) else None
+
+
+def wait_with_updates(worker, speak, first_after: float | None = None) -> None:
+    """Wait for `worker` (a started thread); say "Still working on it." if it takes a while,
+    then "Almost there." after a longer wait."""
+    delay = settings.ack_still_after if first_after is None else first_after
+    n = 0
+    while True:
+        worker.join(delay)
+        if not worker.is_alive():
+            return
+        line = still(n)
+        if line is None:
+            worker.join()
+            return
+        speak(line)
+        n += 1
+        delay = delay * 2  # 7s → then ~14s later
     """WAV for a phrase in AMO's current voice, cached after the first time."""
     from .tts import synthesize
 
@@ -70,7 +93,7 @@ def audio(phrase: str) -> bytes:
 
 def prewarm() -> None:
     """Render every phrase ahead of time (call in a background thread at startup)."""
-    for kind in ("think", "action"):
+    for kind in ("think", "action", "still"):
         for p in phrases(kind):
             try:
                 audio(p)

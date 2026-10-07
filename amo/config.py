@@ -60,6 +60,9 @@ class Settings:
     voice_rate: str = field(default_factory=lambda: _env("AMO_VOICE_RATE", ""))
     voice_pitch: str = field(default_factory=lambda: _env("AMO_VOICE_PITCH", ""))
     voice_robot: str = field(default_factory=lambda: _env("AMO_VOICE_ROBOT", ""))
+    # Pause between sentences (seconds) and target loudness (RMS, 0.05 quiet … 0.15 loud).
+    voice_sentence_pause: float = field(default_factory=lambda: float(_env("AMO_VOICE_PAUSE", "0.28")))
+    voice_loudness: float = field(default_factory=lambda: float(_env("AMO_VOICE_LOUDNESS", "0.1")))
     # Personality: default | computer (dry, sarcastic British computer) | jarvis (polished butler).
     # Empty = whatever suits the voice preset (AMO's own voice → computer).
     personality: str = field(default_factory=lambda: _env("AMO_PERSONALITY", ""))
@@ -70,6 +73,9 @@ class Settings:
         "AMO_ACK_THINK", "Okay, let me think.|Let me think.|One moment."))
     ack_action: str = field(default_factory=lambda: _env(
         "AMO_ACK_ACTION", "Got it.|I'll work on that now.|On it."))
+    # Said if an answer is still being worked on after AMO_ACK_STILL_AFTER seconds (one per wait).
+    ack_still: str = field(default_factory=lambda: _env("AMO_ACK_STILL", "Still working on it.|Almost there."))
+    ack_still_after: float = field(default_factory=lambda: float(_env("AMO_ACK_STILL_AFTER", "7")))
 
     # Wake word ("Hey AMO"): a tiny Whisper model checks short bursts of speech for the phrase.
     wake_model: str = field(default_factory=lambda: _env("AMO_WAKE_MODEL", "tiny.en"))

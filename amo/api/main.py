@@ -192,12 +192,13 @@ async def speech(req: SpeechRequest):
 
 
 @app.get("/api/ack", dependencies=[Depends(auth)])
-async def ack(text: str = ""):
-    """A quick spoken acknowledgement ("Got it", "Okay, let me think") for `text`, as WAV."""
+async def ack(text: str = "", kind: str = "", n: int = 0):
+    """A quick spoken acknowledgement ("Got it", "Okay, let me think") for `text`, as WAV.
+    kind=still&n=0/1 → "Still working on it." / "Almost there." for long waits."""
     from ..voice import acks
     from ..voice.stt import VoiceUnavailable
 
-    phrase = acks.pick(text)
+    phrase = acks.still(n) if kind == "still" else acks.pick(text)
     if not phrase:
         return Response(status_code=204)
     try:

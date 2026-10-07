@@ -109,6 +109,7 @@ class Listener:
     say: Callable[[str], None]
     chime: Callable[[], None] = lambda: None
     ack: Callable[[str], None] = lambda request: None  # "Got it" while the model works
+    wait: Callable[[Any], None] = lambda worker: worker.join()  # + "Still working on it." on long waits
     log: Callable[[str], None] = print
     verbose: bool = False
     follow_up_seconds: float = 7.0
@@ -162,7 +163,7 @@ class Listener:
         worker = threading.Thread(target=work, daemon=True)
         worker.start()
         self.ack(command)
-        worker.join()
+        self.wait(worker)
         if "error" in result:
             self.log(f"   ✗ {result['error']}")
             self.say("Sorry, I couldn't do that. Check the AMO window for details.")
@@ -366,6 +367,14 @@ def run(verbose: bool = False) -> None:
             except Exception:  # noqa: BLE001 — acks are optional
                 pass
 
+    def wait(worker) -> None:
+        def speak_line(line: str) -> None:
+            try:
+                play_wav(acks.audio(line))
+            except Exception:  # noqa: BLE001
+                pass
+        acks.wait_with_updates(worker, speak_line)
+
     threading.Thread(target=acks.prewarm, daemon=True).start()
 
     print("Loading speech models …")
@@ -378,6 +387,7 @@ def run(verbose: bool = False) -> None:
         say=say,
         chime=ding,
         ack=ack,
+        wait=wait,
         verbose=verbose,
     )
     if verbose:

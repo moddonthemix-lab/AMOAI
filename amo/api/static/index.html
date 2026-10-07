@@ -209,10 +209,11 @@ async function speak(text) {
 }
 
 // "Got it" / "Okay, let me think" — played while AMO works on the real answer.
-async function acknowledge(message) {
+async function acknowledge(message) { return playAck("/api/ack?text=" + encodeURIComponent(message)); }
+async function playAck(url) {
   if (!speakOn) return;
   try {
-    const r = await fetch("/api/ack?text=" + encodeURIComponent(message), {headers: key ? {Authorization: "Bearer " + key} : {}});
+    const r = await fetch(url, {headers: key ? {Authorization: "Bearer " + key} : {}});
     if (r.status !== 200) return;
     stopSpeaking();
     player = new Audio(URL.createObjectURL(await r.blob()));
@@ -223,15 +224,21 @@ async function acknowledge(message) {
 async function send(message, channel) {
   addMsg("you", message);
   const pending = addMsg("amo", "…");
-  if (channel === "voice") acknowledge(message);
+  let waitTimers = [];
+  if (channel === "voice") {
+    acknowledge(message);
+    // Long wait? "Still working on it." then "Almost there."
+    waitTimers = [7000, 21000].map((ms, n) => setTimeout(() => playAck(`/api/ack?kind=still&n=${n}`), ms));
+  }
   try {
     const r = await api("/api/ask", {method: "POST", body: JSON.stringify({message, history: history.slice(-10), channel})});
+    waitTimers.forEach(clearTimeout);
     history.push({role: "user", content: message}, {role: "assistant", content: r.content});
     pending.remove();
     addMsg("amo", r.content, r.tool_calls.map(t => t.name));
     speak(r.content);
     load();
-  } catch (err) { pending.textContent = "Error: " + err.message; }
+  } catch (err) { waitTimers.forEach(clearTimeout); pending.textContent = "Error: " + err.message; }
 }
 $("ask").onsubmit = e => {
   e.preventDefault();

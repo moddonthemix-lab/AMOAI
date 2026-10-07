@@ -65,14 +65,10 @@ _lock = threading.Lock()
 
 
 def clean_for_speech(text: str) -> str:
-    """Strip markdown and emoji so the voice doesn't read out symbols."""
-    text = re.sub(r"```.*?```", " ", text, flags=re.S)
-    text = re.sub(r"`([^`]*)`", r"\1", text)
-    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
-    text = re.sub(r"[*_#>|~]", "", text)
-    text = re.sub(r"^\s*[-•]\s+", "", text, flags=re.M)
-    text = re.sub(r"[\U0001F000-\U0001FFFF☀-➿]", "", text)
-    return re.sub(r"\s+", " ", text).strip()
+    """Make written text sound natural spoken (see speakable.py)."""
+    from .speakable import to_speech
+
+    return to_speech(text)
 
 
 # ---------------------------------------------------------------- style resolution
@@ -195,7 +191,14 @@ def _piper_wav(text: str, style: VoiceStyle, speed: float) -> bytes:
 
                 cfg = SynthesisConfig(length_scale=length_scale, speaker_id=sid,
                                       noise_scale=style.noise, noise_w_scale=style.noise_w)
-                voice.synthesize_wav(text, wav, syn_config=cfg)
+                # Piper yields one chunk per sentence: add a natural pause between them.
+                chunks = list(voice.synthesize(text, cfg))
+                rate = chunks[0].sample_rate if chunks else voice.config.sample_rate
+                gap = b"\x00\x00" * int(rate * settings.voice_sentence_pause)
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(rate)
+                wav.writeframes(gap.join(c.audio_int16_bytes for c in chunks))
             except ImportError:
                 voice.synthesize_wav(text, wav)
         else:  # piper-tts 1.2
@@ -273,4 +276,41 @@ def synthesize(text: str, voice: str | None = None) -> bytes:
         wav = _piper_wav(text, style, speed)
     except VoiceUnavailable:
         wav = _say_wav(text, style, speed)
-    return apply_effects(wav, style.pitch, style.robot)
+    return polish(apply_effects(wav, style.pitch, style.robot))
+
+
+def polish(wav_bytes: bytes, lead: float = 0.18, tail: float = 0.12) -> bytes:
+    """Make playback sound clean on any speaker:
+    - a short silent lead-in, because Macs swallow the first moments of audio while the output
+      wakes up (that's what clips the start of "Got it")
+    - gentle fade in/out (no clicks), consistent loudness across phrases."""
+    try:
+        import numpy as np
+    except ImportError:
+        return wav_bytes
+    with wave.open(io.BytesIO(wav_bytes)) as w:
+        rate, width, ch = w.getframerate(), w.getsampwidth(), w.getnchannels()
+        frames = w.readframes(w.getnframes())
+    if width != 2 or not frames:
+        return wav_bytes
+    x = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+    if ch > 1:
+        x = x.reshape(-1, ch).mean(axis=1)
+    # trim silence the engine left at the ends, then add our own consistent padding
+    loud = np.flatnonzero(np.abs(x) > 0.01)
+    if len(loud):
+        x = x[max(0, loud[0] - int(0.02 * rate)): loud[-1] + int(0.05 * rate)]
+    fade_in, fade_out = int(0.008 * rate), int(0.03 * rate)
+    if len(x) > fade_in + fade_out:
+        x[:fade_in] *= np.linspace(0, 1, fade_in)
+        x[-fade_out:] *= np.linspace(1, 0, fade_out)
+    rms = float(np.sqrt(np.mean(x ** 2))) or 1.0
+    x = x * min(settings.voice_loudness / rms, 0.95 / (float(np.max(np.abs(x))) or 1.0))
+    x = np.concatenate([np.zeros(int(lead * rate), np.float32), x, np.zeros(int(tail * rate), np.float32)])
+    out = io.BytesIO()
+    with wave.open(out, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes((np.clip(x, -1, 1) * 32767).astype(np.int16).tobytes())
+    return out.getvalue()
