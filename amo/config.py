@@ -75,8 +75,8 @@ class Settings:
     wake_model: str = field(default_factory=lambda: _env("AMO_WAKE_MODEL", "tiny.en"))
     # Extra spellings Whisper might hear for "AMO", comma-separated (e.g. "amore,emu").
     wake_words: str = field(default_factory=lambda: _env("AMO_WAKE_WORDS", ""))
-    # Mic sensitivity: higher = needs louder speech to wake (try 2–5).
-    wake_sensitivity: float = field(default_factory=lambda: float(_env("AMO_WAKE_SENSITIVITY", "3")))
+    # Mic sensitivity: how many times louder than the room you must be (1.5 = very sensitive, 4 = strict).
+    wake_sensitivity: float = field(default_factory=lambda: float(_env("AMO_WAKE_SENSITIVITY", "2")))
 
     whisper_model: str = field(default_factory=lambda: _env("AMO_WHISPER_MODEL", "base.en"))
     piper_voice: str = field(

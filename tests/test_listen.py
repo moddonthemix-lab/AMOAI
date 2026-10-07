@@ -174,3 +174,37 @@ def test_listener_survives_model_errors():
                    ask=boom, say=said.append, log=lambda *_: None)
     assert lst.handle("book jay") is False
     assert said and said[0].startswith("Sorry")
+
+
+def test_blocked_mic_warns(monkeypatch, capsys):
+    import sys
+    import types
+
+    import numpy as np
+
+    from amo.voice import listen
+
+    blocks = [np.zeros(listen.BLOCK, dtype="float32") for _ in range(70)]
+
+    class FakeStream:
+        read_available = 0
+
+        def __init__(self, **kw):
+            pass
+
+        def start(self):
+            pass
+
+        def read(self, n):
+            if not blocks:
+                raise StopIteration
+            return blocks.pop(0).reshape(-1, 1), False
+
+    monkeypatch.setitem(sys.modules, "sounddevice", types.SimpleNamespace(InputStream=FakeStream))
+    mic = listen.MicSegmenter()
+    try:
+        for _ in mic(None):
+            pass
+    except (StopIteration, RuntimeError):
+        pass
+    assert "blocking it for Terminal" in capsys.readouterr().out

@@ -229,12 +229,17 @@ class Listener:
 class MicSegmenter:
     """Splits microphone audio into utterances with a loudness gate calibrated to the room."""
 
-    def __init__(self, sensitivity: float = 3.0, max_seconds: float = 12.0, silence: float = 0.8):
+    def __init__(self, sensitivity: float = 2.0, max_seconds: float = 12.0, silence: float = 0.8,
+                 meter: bool = False):
         import numpy as np
         import sounddevice as sd
 
         self.np, self.sd = np, sd
         self.sensitivity = sensitivity
+        self.meter = meter
+        self._ticks = 0
+        self._zero_blocks = 0
+        self._warned_silent = False
         self.max_blocks = int(max_seconds * SAMPLE_RATE / BLOCK)
         self.silence_blocks = int(silence * SAMPLE_RATE / BLOCK)
         self.stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32", blocksize=BLOCK)
@@ -255,13 +260,30 @@ class MicSegmenter:
 
     @property
     def threshold(self) -> float:
-        return max(self.noise_floor * self.sensitivity, 0.006)
+        return max(self.noise_floor * self.sensitivity, 0.004)
 
     def flush(self) -> None:
         """Drop audio captured while AMO was talking (so it doesn't hear itself)."""
         avail = self.stream.read_available
         if avail:
             self.stream.read(avail)
+
+    def _watch(self, level: float) -> None:
+        """Spot a muted/blocked mic, and draw a live level meter in verbose mode."""
+        self._zero_blocks = self._zero_blocks + 1 if level == 0.0 else 0
+        if self._zero_blocks >= 40 and not self._warned_silent:
+            self._warned_silent = True
+            print("\n⚠  The microphone is sending pure silence — macOS is blocking it for Terminal.\n"
+                  "   Fix: System Settings → Privacy & Security → Microphone → turn on Terminal,\n"
+                  "   then quit Terminal completely (⌘Q) and start AMO Listen again.")
+        if self.meter:
+            self._ticks += 1
+            if self._ticks % 3 == 0:
+                bars = min(20, int(level / max(self.threshold, 1e-6) * 10))
+                mark = "█" * bars + "·" * (20 - bars)
+                hit = "◀ HEARING YOU" if level >= self.threshold else ""
+                print(f"\r   mic {mark[:10]}|{mark[10:]} {level:.4f} (wakes above {self.threshold:.4f}) {hit:<14}",
+                      end="", flush=True)
 
     def __call__(self, timeout: float | None) -> Iterator[Any]:
         np = self.np
@@ -272,6 +294,7 @@ class MicSegmenter:
                 return
             block = self._read()
             level = self._rms(block)
+            self._watch(level)
             if level < self.threshold:
                 pre = (pre + [block])[-3:]
                 # Track slow changes in room noise (fans, music in the next room).
@@ -319,7 +342,7 @@ def run(verbose: bool = False) -> None:
     from .tts import synthesize
 
     try:
-        mic = MicSegmenter(sensitivity=settings.wake_sensitivity)
+        mic = MicSegmenter(sensitivity=settings.wake_sensitivity, meter=verbose)
     except ImportError as e:
         raise VoiceUnavailable('pip install -e ".[voice]" for microphone support') from e
 
@@ -359,6 +382,7 @@ def run(verbose: bool = False) -> None:
     )
     if verbose:
         print(f"room noise {mic.noise_floor:.4f}, wake threshold {mic.threshold:.4f}")
+        print("The meter shows your mic live: talk and the bar should cross the | line.")
     try:
         listener.run()
     except KeyboardInterrupt:
