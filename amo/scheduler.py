@@ -98,9 +98,15 @@ def tick(db: Database, now: datetime | None = None) -> list[str]:
         except (LLMError, ValueError) as e:
             log.warning("learning skipped: %s", e)
 
+    from .integrations import nightly_backup
     from .proactive import run_jobs
 
     ran += run_jobs(db, now)
+    try:
+        if nightly_backup(db, now):
+            ran.append("backup")
+    except Exception:  # noqa: BLE001 — a failed backup must not stop the scheduler
+        log.exception("nightly backup failed")
 
     week_key = f"{now.isocalendar()[0]}-W{now.isocalendar()[1]}"
     if (now.weekday() == REFLECTION_WEEKDAY and now.hour >= REFLECTION_HOUR

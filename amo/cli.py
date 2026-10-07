@@ -12,6 +12,8 @@
   amo bench [MODEL ...]   time models on this computer and check they can save data
   amo listen              hands-free: say "Hey AMO" (add -v to see what it hears)
   amo setup-wake vosk     lighter "Hey AMO" detector for a Raspberry Pi (or openwakeword)
+  amo calendar            show studio sessions in Apple Calendar (subscribes once, updates itself)
+  amo backup / restore F  back up AMO's data now (nightly backups are automatic) / restore one
   amo lan on|off|status   let a body device on your Wi-Fi (Raspberry Pi) reach this Mac
   amo device --brain URL --key KEY   run AMO's body (mic + speaker) against a brain on your network
   amo mic-test            check the microphone, speech recognition and voice step by step
@@ -260,6 +262,25 @@ def cmd_device(a):
     from .voice.device import run
 
     run(a.brain, a.key or settings.api_key, verbose=a.verbose)
+
+
+def cmd_calendar(_a):
+    from .integrations import subscribe_calendar
+
+    print(subscribe_calendar())
+
+
+def cmd_backup(_a):
+    from .integrations import backup
+
+    print(f"Backed up to {backup()}")
+
+
+def cmd_restore(a):
+    from .integrations import restore
+
+    live = restore(a.file)
+    print(f"Restored {a.file} → {live}. Restart AMO: ~/AMO/scripts/mac-autostart.sh restart")
 
 
 def cmd_setup_wake(a):
@@ -558,6 +579,11 @@ def main(argv: list[str] | None = None) -> None:
     dv.add_argument("--key", default="", help="the brain's AMO_API_KEY")
     dv.add_argument("-v", "--verbose", action="store_true")
     dv.set_defaults(fn=cmd_device)
+    sub.add_parser("calendar", help="subscribe Apple Calendar to AMO's sessions").set_defaults(fn=cmd_calendar)
+    sub.add_parser("backup", help="back up AMO's data now").set_defaults(fn=cmd_backup)
+    rs = sub.add_parser("restore", help="restore AMO's data from a backup file")
+    rs.add_argument("file")
+    rs.set_defaults(fn=cmd_restore)
     sw = sub.add_parser("setup-wake", help="install a lighter wake-word engine (vosk / openwakeword)")
     sw.add_argument("engine", choices=["vosk", "openwakeword"])
     sw.set_defaults(fn=cmd_setup_wake)

@@ -594,6 +594,31 @@ def watchlist_scan():
     return strat.compare(syms)
 
 
+# ---------------------------------------------------------------- texting clients (iMessage)
+@tool("Draft a text message to a studio client (sent from the Mac's Messages app). It is NOT sent "
+      "until the user confirms with 'send it'.",
+      client=("string", "Client name or artist name.", True),
+      message=("string", "The text to send, written in the user's voice.", True))
+def text_client(client: str, message: str):
+    from .integrations import draft_text
+
+    return draft_text(client, message, get_db())
+
+
+@tool("Send the text message that was just drafted (only after the user said to send it).")
+def send_text():
+    from .integrations import send_pending_text
+
+    return send_pending_text(get_db())
+
+
+@tool("Cancel the drafted text message.")
+def cancel_text():
+    from .integrations import cancel_text as cancel
+
+    return cancel(get_db())
+
+
 # ---------------------------------------------------------------- routing
 # Sending all ~34 tool definitions costs ~4k prompt tokens per message, which is slow on a
 # CPU-only machine. Each message only gets the tool groups it plausibly needs.
@@ -649,6 +674,10 @@ GROUPS: dict[str, tuple[list[str], str]] = {
         r"search|look (it )?up|google|online|internet|web|news|latest|current|right now|today|"
         r"who (is|was|won)|what is|what's|when (is|was|did)|where|how (do|does|to|much|many)|why|"
         r"weather|score|release|recipe|define|meaning|http|www\.|\.com",
+    ),
+    "texting": (
+        ["text_client", "send_text", "cancel_text", "find_client"],
+        r"\btext\b|message|imessage|\bsms\b|send it|let (him|her|them) know|remind (him|her|them)",
     ),
     "admin": (
         ["forget", "send_notification"],

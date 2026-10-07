@@ -314,6 +314,19 @@ def announcements_next():
     return {"say": take_pending(get_db())}
 
 
+# ======================================================== calendar feed
+@app.get("/calendar.ics", include_in_schema=False)
+def calendar_feed(request: Request, key: str = ""):
+    """Studio sessions + Cravvr due dates for Apple/Google Calendar. Calendar apps can't send
+    headers, so off this Mac the key goes in the URL: /calendar.ics?key=…"""
+    from ..integrations import calendar_ics
+
+    local = request.client and request.client.host in LOOPBACK and settings.trust_localhost
+    if settings.api_key and not local and key != settings.api_key:
+        raise HTTPException(401, "add ?key=YOUR_AMO_API_KEY to the calendar URL")
+    return Response(calendar_ics(get_db()), media_type="text/calendar; charset=utf-8")
+
+
 # ======================================================== AMO's face
 @app.get("/face", include_in_schema=False)
 def face_page():

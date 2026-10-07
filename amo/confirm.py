@@ -142,6 +142,10 @@ CONFIRM: dict[str, Callable[[dict, dict], str]] = {
         + "I'll speak up when a setup triggers with continuity.").strip(),
     "watchlist_remove": lambda r, a: (f"Stopped watching {', '.join(r['removed'])}." if r["removed"]
                                       else "That wasn't on your watchlist."),
+    "text_client": lambda r, a: (f"Here's the text to {r['client']} ({r['phone']}): “{r['message']}” "
+                                 "Say “send it” to send, or “cancel”."),
+    "send_text": lambda r, a: f"Sent to {r['client']}.",
+    "cancel_text": lambda r, a: "Okay, I won't send it." if r["cancelled"] else "There was no text waiting.",
     "delete_record": lambda r, a: f"Deleted {r['label']} “{r['name']}”.",
     "delete_all_records": lambda r, a: (f"Deleted {r['deleted']} {r['what']}: " + ", ".join(r["names"][:8]) + "."
                                         if r["deleted"] else f"You don't have any {r['what']} to delete."),

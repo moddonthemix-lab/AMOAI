@@ -141,6 +141,16 @@ in `.env`; if it misses you, `2`. If Whisper keeps spelling the name differently
 written, instead of waiting for the whole thing, and always finishes what it's saying.
 (`AMO_STREAM_SPEECH=0` turns streaming off; `AMO_BARGE_IN=1` would let you cut it off mid-answer.)
 
+### Calendar, texting clients, backups
+
+- **Calendar**: `amo calendar` subscribes Apple Calendar to AMO (studio sessions + Cravvr due dates);
+  it refreshes itself every 15 minutes. From another device: `http://Your-Mac.local:8765/calendar.ics?key=YOUR_KEY`.
+- **Texting clients** (iMessage, from the Mac's Messages app): *"Text Jay that the session moved to 8"*
+  → AMO shows the draft → say **"send it"** or **"cancel"**. Nothing is ever sent without your OK
+  (drafts expire after 10 minutes). macOS asks once to let AMO control Messages — allow it.
+- **Backups**: every night after 3am AMO copies its data to iCloud Drive → *AMO Backups* (or
+  `~/AMO/backups`), keeping 14 days. `amo backup` backs up now; `amo restore FILE` restores one.
+
 ### AMO's face
 
 Open **http://localhost:8765/face** (also linked from the dashboard). Two glowing eyes and a mouth:

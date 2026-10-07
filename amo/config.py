@@ -117,6 +117,9 @@ class Settings:
     # Web search: blank = DuckDuckGo (no key). Or your own SearXNG, e.g. http://localhost:8888
     searxng_url: str = field(default_factory=lambda: _env("AMO_SEARXNG_URL", ""))
 
+    # Where nightly backups go (blank = iCloud Drive/AMO Backups if available, else ./backups)
+    backup_dir: str = field(default_factory=lambda: _env("AMO_BACKUP_DIR", ""))
+
     # Monthly revenue target shown on the dashboard (0 = none).
     monthly_revenue_target: float = field(
         default_factory=lambda: float(_env("AMO_MONTHLY_REVENUE_TARGET", "0"))

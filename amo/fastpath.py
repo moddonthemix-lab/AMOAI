@@ -184,8 +184,31 @@ def _check_match(t: str) -> tuple[str, dict[str, Any]] | None:
     return "check_trade", args
 
 
+TEXT_RE = re.compile(
+    _LEAD + r"(?:text|message|imessage|send (?:a )?(?:text|message) to)\s+(?P<client>.+?)\s+"
+    r"(?:saying|that|to say|and say|and tell (?:him|her|them)|telling (?:him|her|them)|:)\s+(?P<msg>.+)$", re.I)
+SEND_RE = re.compile(r"^(?:yes|yeah|yep|ok(?:ay)?)?[\s,]*(?:send it|send|send that|go ahead(?: and send(?: it)?)?|do it|"
+                     r"yes,? send(?: it)?|ship it)[.!]*$", re.I)
+CANCEL_TEXT_RE = re.compile(r"^(?:no,?\s*)?(?:cancel(?: it| that| the text)?|don'?t send(?: it)?|scrap (?:it|that))[.!]*$", re.I)
+
+
+def text_reply(text: str, has_pending: bool) -> tuple[str, dict[str, Any]] | None:
+    """'send it' / 'cancel' only mean something while a text draft is waiting."""
+    t = _clean_sentence(text)
+    if has_pending and SEND_RE.match(t):
+        return "send_text", {}
+    if has_pending and CANCEL_TEXT_RE.match(t):
+        return "cancel_text", {}
+    return None
+
+
 def match(text: str) -> tuple[str, dict[str, Any]] | None:
     t = text.strip()
+    m = TEXT_RE.match(t.rstrip())
+    if m:
+        msg = m.group("msg").strip()
+        msg = msg[:1].upper() + msg[1:]
+        return "text_client", {"client": m.group("client").strip(" ,"), "message": msg}
     rv = REVIEW_RE.match(_clean_sentence(t))
     if rv:
         return "trading_review", {"period": (rv.group("period") or rv.group("period2") or "week").lower()}

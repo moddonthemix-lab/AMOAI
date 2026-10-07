@@ -144,7 +144,11 @@ class Agent:
         self._on_text = on_text if (on_text and kind_of(user_text or "") != "action") else None
         self._final_streamed = False
         content = ""
-        fast = fastpath.match(user_text) if user_text else None
+        fast = None
+        if user_text:
+            from .integrations import pending_text
+
+            fast = fastpath.text_reply(user_text, pending_text(self.db) is not None) or fastpath.match(user_text)
         if fast:
             name, args = fast
             result = json.loads(tools.call(name, args))
@@ -155,6 +159,8 @@ class Agent:
             content = instant_reply([{"name": name, "arguments": args, "result": result}]) or ""
             if content:
                 trace.append({"name": name, "arguments": args, "result": result})
+            elif name in ("text_client", "send_text", "cancel_text") and "error" in result:
+                content = result["error"]
             elif name == "delete_record" and "error" in result:
                 content = result["error"]  # "couldn't find…" / "which one?" — ask straight away
             elif name in ("strat_analysis", "strat_compare", "show_chart", "watchlist_show",
