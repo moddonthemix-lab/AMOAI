@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run AMO (and Open WebUI, if installed) automatically at login via launchd.
-#   ./scripts/mac-autostart.sh install | uninstall | status | logs
+#   ./scripts/mac-autostart.sh install | restart | uninstall | status | logs
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
@@ -33,8 +33,15 @@ plist() { # label, program args..., then env pairs after "--"
   <key>StandardErrorPath</key><string>$LOGS/$label.log</string>
 </dict></plist>
 PLIST
-  launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
-  launchctl bootstrap "gui/$(id -u)" "$AGENTS/$label.plist"
+  local target="gui/$(id -u)/$label"
+  launchctl bootout "$target" 2>/dev/null || true
+  # bootout returns before the job is fully gone; bootstrapping too early fails with "5: Input/output error".
+  for _ in $(seq 1 20); do launchctl print "$target" >/dev/null 2>&1 || break; sleep 0.5; done
+  for attempt in 1 2 3; do
+    launchctl bootstrap "gui/$(id -u)" "$AGENTS/$label.plist" 2>/dev/null && break
+    (( attempt == 3 )) && { echo "  couldn't start $label — try: $0 restart"; return 0; }
+    sleep 2
+  done
   echo "  started $label"
 }
 
@@ -70,7 +77,14 @@ case "${1:-install}" in
       rm -f "$AGENTS/$l.plist"
     done
     echo "AMO will no longer start at login." ;;
+  restart)
+    # Restart without reloading the plists (picks up .env changes).
+    for l in "$OLLAMA_LABEL" "$AMO_LABEL" "$WEBUI_LABEL"; do
+      [[ -f "$AGENTS/$l.plist" ]] || continue
+      launchctl bootstrap "gui/$(id -u)" "$AGENTS/$l.plist" 2>/dev/null || true
+      launchctl kickstart -k "gui/$(id -u)/$l" && echo "  restarted $l"
+    done ;;
   status) launchctl list | grep -E "com\.amo\." || echo "not running" ;;
   logs)   tail -n 50 -f "$LOGS"/*.log ;;
-  *) echo "usage: $0 install|uninstall|status|logs"; exit 1 ;;
+  *) echo "usage: $0 install|restart|uninstall|status|logs"; exit 1 ;;
 esac
