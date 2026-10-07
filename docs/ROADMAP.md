@@ -1,7 +1,7 @@
 # AMO roadmap
 
-## ✅ Phase 1 — Desktop (this repo, today)
-- Local AI on your desktop PC (Ollama), Open WebUI as the interface
+## ✅ Phase 1 — Mac desktop (this repo, today)
+- Local AI on your Mac (native Ollama on the Apple Silicon GPU), Open WebUI as the interface
 - Long-term memory in SQLite (keyword + embedding search, auto-learning, weekly reflection)
 - Voice: Whisper speech-to-text, Piper text-to-speech (Open WebUI mic + `amo voice`)
 - Studio CRM, reselling tracker, trading journal, goals, Cravvr tasks, revenue tracking
@@ -9,7 +9,8 @@
 
 ## ⏭ Phase 2 — Raspberry Pi 5, always on
 What's already in place:
-- Everything is plain Python + SQLite + Docker — the same `docker-compose.yml` runs on a Pi 5 (arm64).
+- Everything is plain Python + SQLite + Docker — on the Pi 5 (arm64), `docker compose --profile ollama up -d`
+  runs Ollama in Docker too (set `AMO_DOCKER_OLLAMA_URL=http://ollama:11434`).
 - `amo/voice/loop.py` is the voice loop; only the trigger changes (Enter key → wake word).
 - The scheduler already runs inside the server, so reminders/briefs work 24/7 once it's always on.
 
@@ -17,7 +18,7 @@ To do:
 - [ ] Pi 5 (8GB) install guide + systemd service (smaller model: `llama3.2:3b` or `qwen2.5:3b` as chat model)
 - [ ] Wake word "Hey AMO": openWakeWord with a custom-trained model (use `hey_jarvis` until trained)
 - [ ] USB mic / speaker setup, voice loop as a service
-- [ ] Optional: keep the big model on the desktop and point the Pi's `OLLAMA_URL` at it over LAN
+- [ ] Optional: keep the big model on the Mac and point the Pi's `OLLAMA_URL` at it over LAN
 - [ ] Move `data/amo.db` to the Pi (single file copy) — backups via cron
 
 ## ⏭ Phase 3 — ESP32 touchscreen

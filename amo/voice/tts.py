@@ -11,6 +11,8 @@ import io
 import re
 import shutil
 import subprocess
+import sys
+import tempfile
 import threading
 import wave
 from pathlib import Path
@@ -50,10 +52,23 @@ def _load_voice():
         return _voice
 
 
+def _macos_say(text: str) -> bytes:
+    """Fallback on a Mac: the built-in `say` voice, so voice works before Piper is set up."""
+    with tempfile.NamedTemporaryFile(suffix=".wav") as f:
+        subprocess.run(["say", "-o", f.name, "--data-format=LEI16@22050", "-f", "-"],
+                       input=text.encode(), check=True)
+        return Path(f.name).read_bytes()
+
+
 def synthesize(text: str) -> bytes:
     """Return WAV bytes for `text`."""
     text = clean_for_speech(text)
-    voice = _load_voice()
+    try:
+        voice = _load_voice()
+    except VoiceUnavailable:
+        if sys.platform == "darwin" and shutil.which("say"):
+            return _macos_say(text)
+        raise
     if voice == "cli":
         exe = shutil.which("piper")
         if not exe:

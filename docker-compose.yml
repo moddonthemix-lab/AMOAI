@@ -1,40 +1,34 @@
-# Phase 1: everything on your desktop PC.
-#   cp .env.example .env   (set AMO_API_KEY, AMO_OWNER_NAME)
-#   docker compose up -d
+# Phase 1 on a Mac.
+#
+# Ollama runs NATIVELY on macOS (the Ollama app) so models use the Apple Silicon GPU —
+# Docker on a Mac can't reach the GPU. AMO + Open WebUI run here and talk to it
+# through host.docker.internal.
+#
+#   brew install ollama && brew services start ollama   (or install the Ollama app)
 #   ./scripts/pull-models.sh
+#   cp .env.example .env    (set AMO_API_KEY)
+#   docker compose up -d --build
+#
 # Open WebUI → http://localhost:3000   AMO dashboard → http://localhost:8765
+#
+# (Linux box / Raspberry Pi later: `docker compose --profile ollama up -d` runs Ollama in
+#  Docker too; set OLLAMA_URL=http://ollama:11434 in .env.)
 
 services:
-  ollama:
-    image: ollama/ollama:latest
-    restart: unless-stopped
-    volumes:
-      - ollama:/root/.ollama
-    ports:
-      - "11434:11434"
-    # NVIDIA GPU? Uncomment (needs nvidia-container-toolkit / Docker Desktop GPU support):
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-
   amo:
     build: .
     restart: unless-stopped
     env_file: .env
     environment:
-      OLLAMA_URL: http://ollama:11434
+      OLLAMA_URL: ${AMO_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}
       AMO_DB_PATH: /data/amo.db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/data
       - ./models:/models
     ports:
       - "8765:8765"
-    depends_on:
-      - ollama
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
@@ -43,9 +37,11 @@ services:
       - "3000:8080"
     volumes:
       - open-webui:/app/backend/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       # Raw Ollama models (still available for plain chat)
-      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_BASE_URL: ${AMO_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}
       # AMO shows up as the "amo" model — this is the one with memory + your business tools.
       OPENAI_API_BASE_URLS: http://amo:8765/v1
       OPENAI_API_KEYS: ${AMO_API_KEY}
@@ -65,6 +61,16 @@ services:
       ENABLE_SIGNUP: "true"
     depends_on:
       - amo
+
+  # Only for Linux / Raspberry Pi (Phase 2): `docker compose --profile ollama up -d`
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    restart: unless-stopped
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "11434:11434"
 
 volumes:
   ollama:

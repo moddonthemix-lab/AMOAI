@@ -6,10 +6,13 @@ CHAT=${AMO_CHAT_MODEL:-llama3.1:8b}
 FAST=${AMO_FAST_MODEL:-llama3.2:3b}
 EMBED=${AMO_EMBED_MODEL:-nomic-embed-text}
 
-if command -v docker >/dev/null && docker compose ps ollama >/dev/null 2>&1 && [ -n "$(docker compose ps -q ollama)" ]; then
+if command -v ollama >/dev/null; then
+  OLLAMA="ollama"   # native (macOS: uses the Apple Silicon GPU)
+elif command -v docker >/dev/null && [ -n "$(docker compose ps -q ollama 2>/dev/null)" ]; then
   OLLAMA="docker compose exec ollama ollama"
 else
-  OLLAMA="ollama"
+  echo "Ollama not found. On a Mac: brew install ollama && brew services start ollama" >&2
+  exit 1
 fi
 for m in "$CHAT" "$FAST" "$EMBED"; do
   echo "→ pulling $m"

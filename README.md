@@ -7,12 +7,12 @@ hardware** — no API fees, no subscription, your data never leaves your machine
 | Piece | What it does |
 |---|---|
 | **Ollama** | Runs the AI models locally (Llama 3.1 8B by default) |
-| **Open WebUI** | Chat interface (browser, phone on your Wi-Fi), with mic + read-aloud |
+| **Open WebUI** | Chat interface in your browser (also your phone on the same Wi-Fi), with mic + read-aloud |
 | **AMO core** (this repo) | Memory, business tools, learning, voice, dashboard, reminders |
 | **SQLite** | One file (`data/amo.db`) holds all memory and business data |
 | **Whisper** / **Piper** | Local speech-to-text / text-to-speech |
 
-This is **Phase 1** (desktop). Phases 2 (Raspberry Pi, "Hey AMO") and 3 (ESP32 touchscreen)
+This is **Phase 1** (your Mac). Phases 2 (Raspberry Pi, "Hey AMO") and 3 (ESP32 touchscreen)
 are planned in [docs/ROADMAP.md](docs/ROADMAP.md) — Phase 1 is built so they plug straight in.
 
 ---
@@ -42,53 +42,61 @@ trading, reselling, notifications, and a quick "ask AMO" box.
 
 ---
 
-## Setup (desktop PC)
+## Setup (Mac)
 
-### Option A — Docker (recommended, Windows/Mac/Linux)
+Ollama runs **natively** on macOS so the models use your Apple Silicon GPU (Docker on a Mac
+can't use the GPU, so don't run Ollama in Docker).
 
-1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/).
-2. ```sh
-   git clone <this repo> && cd AMOAI
-   cp .env.example .env          # set AMO_OWNER_NAME and a random AMO_API_KEY
-   docker compose up -d --build
-   ./scripts/pull-models.sh      # Windows: .\scripts\pull-models.ps1
-   ```
-3. Open **http://localhost:3000** (Open WebUI), create your local account, choose the **amo** model.
-4. Teach it about you: copy `docs/about-me.example.md` → `docs/about-me.md`, edit, then
-   `docker compose exec amo amo import docs/about-me.md` (or just tell it in chat).
-
-Have an NVIDIA GPU? Uncomment the `deploy:` block under `ollama` in `docker-compose.yml`.
-
-### Option B — Native Python
+### Option A — one command (recommended)
 
 ```sh
-# 1. Install Ollama from https://ollama.com, then:
-ollama pull llama3.1:8b && ollama pull llama3.2:3b && ollama pull nomic-embed-text
-
-# 2. AMO (Python 3.10+)
-python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
-pip install -e ".[voice]"
-cp .env.example .env
-amo setup-voice      # downloads the Piper voice
-amo doctor           # checks everything
-amo serve            # API + dashboard + scheduler on :8765
-
-# 3. Open WebUI (separate terminal)
-pip install open-webui && open-webui serve            # http://localhost:8080
+git clone <this repo> && cd AMOAI
+./scripts/setup-mac.sh
 ```
-In Open WebUI → **Admin Settings → Connections → OpenAI API**: add `http://localhost:8765/v1` with your
-`AMO_API_KEY`. For voice, **Admin Settings → Audio**: set STT and TTS engine to *OpenAI* with the same URL/key
-(TTS model `piper`).
 
-### Picking a model
+It installs Homebrew (if needed), Ollama, Python, ffmpeg; picks a model that fits your Mac's
+memory; downloads the models; installs AMO with voice and Open WebUI; creates `.env` with a random
+API key and your timezone; and sets AMO + Open WebUI to **start automatically at login**.
 
-| Your PC | `AMO_CHAT_MODEL` |
+Then open **http://localhost:3000** (Open WebUI), create your local account, and pick the **amo** model.
+Dashboard: **http://localhost:8765**.
+
+Auto-start control: `./scripts/mac-autostart.sh status | logs | uninstall`.
+
+### Option B — Docker for AMO + Open WebUI, native Ollama
+
+```sh
+brew install ollama && brew services start ollama
+./scripts/pull-models.sh
+cp .env.example .env          # set a random AMO_API_KEY
+docker compose up -d --build  # needs Docker Desktop
+```
+
+### Teach AMO about you
+```sh
+cp docs/about-me.example.md docs/about-me.md   # edit it
+source .venv/bin/activate && amo import docs/about-me.md
+# (Docker: docker compose exec amo amo import docs/about-me.md)
+```
+Or just tell it things in chat — it remembers.
+
+### Voice on the Mac
+- In Open WebUI, use the mic button and the speaker icon — both run through AMO's local Whisper/Piper.
+- In Terminal: `amo voice` (press Enter, talk). The first time, macOS asks to allow microphone access
+  for Terminal — say yes (System Settings → Privacy & Security → Microphone).
+- If the Piper voice isn't downloaded yet, AMO falls back to the built-in macOS voice.
+
+### Picking a model (Apple Silicon, by unified memory)
+
+| Your Mac | `AMO_CHAT_MODEL` in `.env` |
 |---|---|
-| 8 GB RAM, no GPU | `llama3.2:3b` |
-| 16 GB RAM or 8 GB GPU | `llama3.1:8b` (default) or `qwen2.5:7b` |
-| 24 GB+ GPU | `qwen2.5:14b` / `qwen2.5:32b` |
+| 8 GB | `llama3.2:3b` |
+| 16 GB | `llama3.1:8b` (default) or `qwen2.5:7b` |
+| 32 GB | `qwen2.5:14b` |
+| 64 GB+ | `qwen2.5:32b` |
 
-The model must support tool calling (Llama 3.1+, Qwen 2.5+, Mistral Nemo all do).
+The model must support tool calling (Llama 3.1+, Qwen 2.5+, Mistral Nemo all do). After changing it,
+run `ollama pull <model>` and restart AMO (`./scripts/mac-autostart.sh install`).
 
 ---
 
