@@ -147,6 +147,7 @@ class Listener:
             return True
 
         self.history.append({"role": "user", "content": command})
+        self.log("   … thinking")
         reply = self.ask(self.history[-10:])
         self.history.append({"role": "assistant", "content": reply})
         self.log(f"AMO: {reply}")
@@ -159,8 +160,10 @@ class Listener:
             self.log(f"you: {command}")
             if not self.handle(command) or self.asleep:
                 return
+            self.log(f"   (follow up within {self.follow_up_seconds:g}s — no need to say Hey AMO)")
             seg = self.next_utterance(self.follow_up_seconds)
             if seg is None:
+                self.log('Listening. Say "Hey AMO" …')
                 return
             command = self.transcribe_command(seg)
             # Saying the wake phrase again in a follow-up is fine too.
@@ -171,11 +174,12 @@ class Listener:
     def step(self, seg: Any) -> None:
         """Process one burst of speech heard while idle."""
         heard = self.transcribe_wake(seg)
-        if self.verbose and heard:
-            self.log(f"(heard) {heard}")
         woke, rest = match_wake(heard)
         if not woke:
+            if heard:
+                self.log(f"   · heard “{heard}” — not for me")
             return
+        self.log(f"✓ woke: “{heard}”")
         if self.asleep:
             if quick_command(rest) == "wake":
                 self.asleep = False
@@ -188,8 +192,10 @@ class Listener:
             command = rest2 if woke2 and rest2 else rest
         else:
             self.chime()
+            self.log("🎙  Yes? Say your request…")
             seg2 = self.next_utterance(8.0)
             if seg2 is None:
+                self.log('   (didn\'t hear a request) Listening. Say "Hey AMO" …')
                 return
             command = self.transcribe_command(seg2)
         self.converse(command)

@@ -11,6 +11,7 @@
   amo use MODEL           download a model and switch AMO to it (e.g. amo use gemma4:e2b)
   amo bench [MODEL ...]   time models on this computer and check they can save data
   amo listen              hands-free: say "Hey AMO" (add -v to see what it hears)
+  amo mic-test            check the microphone, speech recognition and voice step by step
   amo voices              list voice presets and the British voices on this Mac
   amo try-voice [PRESET]  hear a voice before choosing it
   amo set-voice PRESET    switch AMO's voice + personality (computer, jarvis, british-female, default)
@@ -116,6 +117,99 @@ def cmd_listen(a):
     except VoiceUnavailable as e:
         print(f"Voice isn't available: {e}")
         sys.exit(1)
+
+
+def cmd_mic_test(_a):
+    """Step-by-step check of everything hands-free mode needs."""
+    ok = lambda m: print(f"  ✓ {m}")  # noqa: E731
+    bad = lambda m: print(f"  ✗ {m}")  # noqa: E731
+    fix_pkgs = "~/.local/bin/uv pip install --python .venv/bin/python sounddevice faster-whisper numpy"
+
+    print("1. Software")
+    missing = []
+    for mod, label in (("numpy", "numpy"), ("sounddevice", "microphone access (sounddevice)"),
+                       ("faster_whisper", "speech recognition (faster-whisper)")):
+        try:
+            __import__(mod)
+            ok(label)
+        except Exception as e:  # noqa: BLE001 — ImportError or a broken native library
+            bad(f"{label}: {e}")
+            missing.append(mod)
+    from .voice.tts import piper_installed
+
+    (ok if piper_installed() else bad)("AMO's voice engine (Piper)" if piper_installed()
+                                       else "Piper not installed — AMO will use the Mac voice instead")
+    if missing:
+        print(f"\n  Fix: cd ~/AMO && {fix_pkgs}\n  Then run amo mic-test again.")
+        sys.exit(1)
+
+    import numpy as np
+    import sounddevice as sd
+
+    print("\n2. Microphone")
+    try:
+        dev = sd.query_devices(kind="input")
+        ok(f"using: {dev['name']}")
+    except Exception as e:  # noqa: BLE001
+        bad(f"no microphone found ({e})")
+        sys.exit(1)
+
+    print("\n3. Hearing you — say:  “Hey AMO, what time is it?”  (recording 5 seconds)")
+    for i in (3, 2, 1):
+        print(f"   {i}…", end=" ", flush=True)
+        import time
+
+        time.sleep(0.7)
+    print("GO — speak now")
+    audio = sd.rec(int(5 * 16000), samplerate=16000, channels=1, dtype="float32")
+    sd.wait()
+    audio = audio[:, 0]
+    level = float(np.sqrt(np.mean(audio**2)))
+    peak = float(np.max(np.abs(audio))) if len(audio) else 0.0
+    bar = "█" * min(30, int(peak * 60))
+    print(f"   level {bar or '(nothing)'}")
+    if peak < 0.003:
+        bad("only silence — macOS is probably blocking the mic for Terminal.")
+        print("    Fix: System Settings → Privacy & Security → Microphone → turn on Terminal, "
+              "then quit Terminal completely (⌘Q), reopen it and run amo mic-test again.")
+        sys.exit(1)
+    if peak < 0.03:
+        bad("very quiet — move closer to the mic or raise Input volume (System Settings → Sound → Input)")
+    else:
+        ok("microphone works")
+
+    print("\n4. Understanding you")
+    from .voice.listen import WAKE_PROMPT, match_wake
+    from .voice.stt import transcribe_array
+
+    print("   (first run downloads the speech models, ~150 MB)")
+    quick = transcribe_array(audio, model=settings.wake_model, prompt=WAKE_PROMPT)
+    print(f"   wake-word model heard:  “{quick}”")
+    full = transcribe_array(audio, prompt="AMO")
+    print(f"   main model heard:       “{full}”")
+    woke, rest = match_wake(quick)
+    if woke:
+        ok(f"wake phrase recognised, request: “{rest}”" if rest else "wake phrase recognised")
+    else:
+        bad("didn't recognise “Hey AMO”. Speak a little slower, or tell Claude the line above so "
+            "it can add that spelling (AMO_WAKE_WORDS).")
+
+    print("\n5. Speaking")
+    try:
+        from .voice.loop import play_wav
+        from .voice.tts import synthesize
+
+        play_wav(synthesize("Microphone check complete. I can hear you perfectly. Unfortunately."))
+        ok("you should have just heard AMO speak")
+    except Exception as e:  # noqa: BLE001
+        bad(f"couldn't speak: {e}")
+
+    print("\n6. AI model")
+    from .llm import get_llm
+
+    (ok if get_llm().list_models() else bad)(
+        "Ollama is running" if get_llm().list_models() else "Ollama isn't running — open the Ollama app")
+    print("\nIf everything is ✓, run:  amo listen")
 
 
 def cmd_setup_voice(_a):
@@ -400,6 +494,7 @@ def main(argv: list[str] | None = None) -> None:
     ls = sub.add_parser("listen", help='hands-free mode: say "Hey AMO"')
     ls.add_argument("-v", "--verbose", action="store_true", help="print everything it hears")
     ls.set_defaults(fn=cmd_listen)
+    sub.add_parser("mic-test", help="check mic, speech recognition and voice").set_defaults(fn=cmd_mic_test)
     sub.add_parser("setup-voice", help="download the default Piper voice").set_defaults(fn=cmd_setup_voice)
 
     r = sub.add_parser("remember", help="save a memory")
