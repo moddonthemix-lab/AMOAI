@@ -189,6 +189,47 @@ MIGRATIONS: list[str] = [
     """
     CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     """,
+    # 8 — a counter bumped on every data change (any process), so the dashboard can live-update
+    """
+    CREATE TABLE data_version (v INTEGER NOT NULL);
+    INSERT INTO data_version (v) VALUES (0);
+    CREATE TRIGGER dv_memories_I AFTER INSERT ON memories BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_memories_U AFTER UPDATE ON memories BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_memories_D AFTER DELETE ON memories BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_clients_I AFTER INSERT ON clients BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_clients_U AFTER UPDATE ON clients BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_clients_D AFTER DELETE ON clients BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_studio_sessions_I AFTER INSERT ON studio_sessions BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_studio_sessions_U AFTER UPDATE ON studio_sessions BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_studio_sessions_D AFTER DELETE ON studio_sessions BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_payments_I AFTER INSERT ON payments BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_payments_U AFTER UPDATE ON payments BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_payments_D AFTER DELETE ON payments BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_resale_items_I AFTER INSERT ON resale_items BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_resale_items_U AFTER UPDATE ON resale_items BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_resale_items_D AFTER DELETE ON resale_items BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_trades_I AFTER INSERT ON trades BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_trades_U AFTER UPDATE ON trades BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_trades_D AFTER DELETE ON trades BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_trading_rules_I AFTER INSERT ON trading_rules BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_trading_rules_U AFTER UPDATE ON trading_rules BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_trading_rules_D AFTER DELETE ON trading_rules BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_goals_I AFTER INSERT ON goals BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_goals_U AFTER UPDATE ON goals BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_goals_D AFTER DELETE ON goals BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_goal_checkins_I AFTER INSERT ON goal_checkins BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_goal_checkins_U AFTER UPDATE ON goal_checkins BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_goal_checkins_D AFTER DELETE ON goal_checkins BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_notifications_I AFTER INSERT ON notifications BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_notifications_U AFTER UPDATE ON notifications BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_notifications_D AFTER DELETE ON notifications BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_cravvr_tasks_I AFTER INSERT ON cravvr_tasks BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_cravvr_tasks_U AFTER UPDATE ON cravvr_tasks BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_cravvr_tasks_D AFTER DELETE ON cravvr_tasks BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_reflections_I AFTER INSERT ON reflections BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_reflections_U AFTER UPDATE ON reflections BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_reflections_D AFTER DELETE ON reflections BEGIN UPDATE data_version SET v = v + 1; END;
+    """,
 ]
 
 
@@ -333,6 +374,10 @@ class Database:
         with self.tx() as c:
             cur = c.execute(f"UPDATE {table} SET {sets} WHERE id = ?", (*data.values(), row_id))
             return cur.rowcount > 0
+
+    def data_version(self) -> int:
+        """Increases whenever any business data changes (from any process)."""
+        return int(self.scalar("SELECT v FROM data_version"))
 
     def get_kv(self, key: str, default: str | None = None) -> str | None:
         v = self.scalar("SELECT value FROM kv WHERE key = ?", (key,))

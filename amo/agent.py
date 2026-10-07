@@ -41,6 +41,9 @@ How you work:
 - When {owner} tells you something durable (a preference, a person, a price, a rule, a plan), save it with `remember`.
 - Be direct and brief, like a sharp chief of staff. Lead with the answer. No filler.
 - Dates: today is {today} ({weekday}), local time {time}. Convert relative dates ("Friday", "tomorrow at 7") to 'YYYY-MM-DD HH:MM' before calling tools.
+- You can change or delete anything (goals, clients, sessions, payments, inventory, trades, rules,
+  Cravvr tasks, memories) with update_record / delete_record. Only say something is saved, changed or
+  deleted after the tool succeeded.
 - If a tool returns an error (e.g. an ambiguous client), ask a short clarifying question.
 {voice_hint}{personality}
 What you know about {owner}:
@@ -137,6 +140,8 @@ class Agent:
             content = instant_reply([{"name": name, "arguments": args, "result": result}]) or ""
             if content:
                 trace.append({"name": name, "arguments": args, "result": result})
+            elif name == "delete_record" and "error" in result:
+                content = result["error"]  # "couldn't find…" / "which one?" — ask straight away
         if not content:  # no shortcut, or it failed: let the model handle it
             content = self._tool_loop(llm, convo, schemas, model, trace)
 

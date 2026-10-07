@@ -78,9 +78,11 @@ def _coerce(value: Any, ptype: str) -> Any:
             return float(str(value).replace("$", "").replace(",", ""))
         if ptype == "integer":
             return int(float(str(value)))
+        if ptype == "object" and isinstance(value, str):
+            return json.loads(value)
         if ptype == "boolean":
             return value if isinstance(value, bool) else str(value).lower() in ("true", "yes", "1", "y")
-    except ValueError:
+    except (ValueError, json.JSONDecodeError):
         return value
     return value
 
@@ -395,6 +397,46 @@ def send_notification(title: str, body: str = "", level: str = "info"):
     return _notify(title, body, level)
 
 
+# ---------------------------------------------------------------- edit / delete anything
+_KINDS = "enum:goals|clients|sessions|payments|resale|trades|rules|cravvr|memories"
+
+
+@tool("Find items of any kind (goals, clients, sessions, payments, resale inventory, trades, "
+      "trading rules, Cravvr tasks, memories). Use before changing or deleting if unsure which one.",
+      kind=(_KINDS, "What kind of item.", True),
+      search=("string", "Name or words to look for; omit to list all.", False))
+def find_records(kind: str, search: str | None = None):
+    from . import records
+
+    return records.list_records(kind, search, get_db(), limit=25)
+
+
+@tool("Change an existing item: rename a goal, change a client's phone, move a session, fix a "
+      "price, change a task's status, etc.",
+      kind=(_KINDS, "What kind of item.", True),
+      item=("string", "The item's name (or #id).", True),
+      changes=("object", "Fields to change, e.g. {\"title\": \"Make two beats\"} or "
+                         "{\"cadence\": \"weekly\"} or {\"rate\": 60}.", True))
+def update_record(kind: str, item: str, changes: dict):
+    from . import records
+
+    if isinstance(changes, str):
+        changes = json.loads(changes)
+    row = records.update(kind, item, changes, get_db())
+    return {"updated": True, "label": records.entity(kind).label,
+            "name": records._describe(records.entity(kind), row), "changes": changes}
+
+
+@tool("Delete an item for good: a goal, client, session, payment, resale item, trade, "
+      "trading rule, Cravvr task or memory.",
+      kind=(_KINDS, "What kind of item.", True),
+      item=("string", "The item's name (or #id).", True))
+def delete_record(kind: str, item: str):
+    from . import records
+
+    return records.delete(kind, item, get_db())
+
+
 # ---------------------------------------------------------------- routing
 # Sending all ~34 tool definitions costs ~4k prompt tokens per message, which is slow on a
 # CPU-only machine. Each message only gets the tool groups it plausibly needs.
@@ -429,6 +471,11 @@ GROUPS: dict[str, tuple[list[str], str]] = {
         ["revenue", "overview", "record_payment"],
         r"revenue|money|\bmade\b|\bmake\b|income|earn|profit|target|how am i doing|how.?s (my|business)|"
         r"overview|summary|brief|dashboard|this (week|month)|today|plan my day|what.?s (up|next|on)",
+    ),
+    "edit": (
+        ["find_records", "update_record", "delete_record"],
+        r"delete|remove|get rid|drop|erase|cancel|change|update|edit|rename|fix|wrong|move|"
+        r"switch|instead|correct|mistake|undo|show (me )?(my|all)|list (my|all)",
     ),
     "admin": (
         ["forget", "send_notification"],

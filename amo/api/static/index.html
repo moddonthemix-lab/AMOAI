@@ -8,6 +8,7 @@
   :root { --bg:#f6f6f4; --card:#fff; --ink:#1b1b1b; --mut:#6b6b6b; --line:#e4e4e0; --acc:#2f6fed; --good:#1f9d55; --bad:#d64545; }
   @media (prefers-color-scheme: dark) { :root { --bg:#111214; --card:#1a1c1f; --ink:#ececec; --mut:#9a9a9a; --line:#2a2d31; --acc:#6c9bff; --good:#3ecf7a; --bad:#ff6b6b; } }
   * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
   body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif; }
   header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:20px 16px 8px; max-width:1200px; margin:auto; flex-wrap:wrap; }
   h1 { margin:0; font-size:22px; } .mut { color:var(--mut); }
@@ -31,10 +32,40 @@
   .msg.you { align-self:flex-end; background:var(--acc); color:#fff; }
   .msg.amo { align-self:flex-start; background:var(--bg); border:1px solid var(--line); }
   .msg .tools { display:block; font-size:12px; color:var(--mut); margin-top:4px; }
-  input, button { font:inherit; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
+  input, button, select, textarea { font:inherit; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
   button { background:var(--acc); color:#fff; border:0; cursor:pointer; }
   #answer { white-space:pre-wrap; margin-top:10px; }
   .chk { cursor:pointer; } svg { width:100%; height:40px; display:block; }
+  .chatwrap { max-width:1200px; margin:auto; padding:8px 16px; }
+  nav.tabs { display:flex; gap:6px; padding:4px 16px 8px; max-width:1200px; margin:auto; overflow-x:auto; scrollbar-width:none; }
+  nav.tabs button { background:transparent; color:var(--mut); border:1px solid var(--line); border-radius:999px; padding:7px 14px; white-space:nowrap; }
+  nav.tabs button.on { background:var(--ink); color:var(--bg); border-color:var(--ink); }
+  #manage { display:block; }
+  .panel { margin-bottom:14px; }
+  .panel-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  .panel-head h2 { margin:0 auto 0 0; }
+  .panel-head input { width:180px; max-width:100%; padding:7px 10px; }
+  .tablewrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  th, td { text-align:left; padding:8px 8px; border-top:1px solid var(--line); vertical-align:top; }
+  td { white-space:nowrap; } td.wrap { white-space:normal; min-width:160px; }
+  th { font-size:12px; color:var(--mut); font-weight:600; border-top:0; white-space:nowrap; }
+  td.act { white-space:nowrap; text-align:right; }
+  .small { padding:5px 9px; font-size:13px; border-radius:7px; }
+  .ghost { background:var(--bg); color:var(--ink); border:1px solid var(--line); }
+  .danger { background:transparent; color:var(--bad); border:1px solid var(--line); }
+  form.edit { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:10px; padding:12px; margin-bottom:10px;
+              border:1px solid var(--acc); border-radius:10px; background:var(--bg); }
+  form.edit label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--mut); }
+  form.edit .full { grid-column:1/-1; }
+  form.edit input, form.edit select, form.edit textarea { font:inherit; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:8px; padding:8px 10px; width:100%; }
+  form.edit textarea { min-height:60px; resize:vertical; }
+  form.edit .btns { grid-column:1/-1; display:flex; gap:8px; justify-content:flex-end; }
+  .err { color:var(--bad); grid-column:1/-1; }
+  .empty { color:var(--mut); padding:10px 0; }
+  #toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); background:var(--ink); color:var(--bg); padding:10px 16px;
+           border-radius:999px; font-size:14px; opacity:0; transition:opacity .2s; pointer-events:none; max-width:calc(100% - 32px); }
+  #toast.show { opacity:1; }
 </style>
 </head>
 <body>
@@ -42,8 +73,8 @@
   <h1 id="title">AMO</h1>
   <span class="mut" id="date"></span>
 </header>
-<main>
-  <section class="card wide">
+<div class="chatwrap">
+  <section class="card">
     <form class="ask" id="ask">
       <button type="button" class="icon" id="mic" title="Talk to AMO (click to start, click again to send)" aria-label="Talk">🎤</button>
       <input id="q" placeholder="Talk or type… (e.g. “book Jay Friday 7pm, 3 hours at $50”)" autocomplete="off">
@@ -53,6 +84,18 @@
     <div id="log" aria-live="polite"></div>
     <div id="answer" class="mut"></div>
   </section>
+</div>
+<nav class="tabs" id="tabs" aria-label="Sections">
+  <button data-tab="overview" class="on">Overview</button>
+  <button data-tab="goals">Goals</button>
+  <button data-tab="studio">Studio</button>
+  <button data-tab="reselling">Reselling</button>
+  <button data-tab="trading">Trading</button>
+  <button data-tab="cravvr">Cravvr</button>
+  <button data-tab="memory">Memory</button>
+</nav>
+<main id="manage" hidden></main>
+<main id="overview">
   <section class="card"><h2>Revenue · month</h2><div class="big" id="rev-month">–</div>
     <div class="bar"><i id="rev-bar" style="width:0"></i></div><div class="mut" id="rev-target"></div>
     <svg id="spark" viewBox="0 0 140 40" preserveAspectRatio="none"></svg><div id="rev-biz"></div></section>
@@ -62,6 +105,7 @@
   <section class="card"><h2>Reselling</h2><div id="resale"></div></section>
   <section class="card"><h2>Notifications</h2><div id="notes"></div></section>
 </main>
+<div id="toast" role="status"></div>
 <script>
 const $ = id => document.getElementById(id);
 const money = n => (n < 0 ? "-$" : "$") + Math.abs(n || 0).toLocaleString(undefined, {maximumFractionDigits: 0});
@@ -211,8 +255,166 @@ $("mic").onclick = async () => {
   $("mic").classList.add("rec"); $("mic").textContent = "■";
   $("answer").textContent = "listening… click ■ when you're done";
 };
-load().catch(e => $("answer").textContent = "Error: " + e.message);
-setInterval(() => load().catch(() => {}), 60000);
+
+// ================================================================ manage tabs
+const TABS = {
+  goals: ["goals"],
+  studio: ["sessions", "clients", "payments"],
+  reselling: ["resale"],
+  trading: ["trades", "rules"],
+  cravvr: ["cravvr"],
+  memory: ["memories"],
+};
+// Extra computed columns per kind (shown after the editable ones).
+const EXTRA = {
+  goals: [["streak", "Streak", r => r.streak ? `🔥 ${r.streak}` : ""]],
+  sessions: [["total", "Total", r => r.total ? money(r.total) : ""]],
+  resale: [["profit", "Profit", r => r.profit == null ? "" : `<span class="${sign(r.profit)}">${money(r.profit)}</span>`]],
+  trades: [["pnl", "P&L", r => r.pnl == null ? "open" : `<span class="${sign(r.pnl)}">${money(r.pnl)}</span>`]],
+};
+let SCHEMA = null, CLIENTS = [], tab = "overview", editing = null, searches = {};
+
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+function cell(f, r) {
+  let v = r[f.key];
+  if (f.type === "client") return esc(r.client_name || "");
+  if (v == null || v === "") return "";
+  if (f.type === "number" && ["cost","list_price","sold_price","rate","amount","fees","shipping"].includes(f.key)) return money(v);
+  if (f.type === "datetime") return esc(String(v).slice(0, 16).replace("T", " "));
+  if (f.type === "bool") return v ? "yes" : "no";
+  if (f.type === "longtext") return esc(String(v).length > 80 ? String(v).slice(0, 80) + "…" : v);
+  return esc(v);
+}
+
+function input(f, v) {
+  const val = v == null ? "" : v;
+  const name = `name="${f.key}"`;
+  const req = f.required ? "required" : "";
+  if (f.type === "select") return `<select ${name} ${req}>${f.required ? "" : '<option value=""></option>'}${f.options.map(o => `<option ${o === val ? "selected" : ""}>${o}</option>`).join("")}</select>`;
+  if (f.type === "client") return `<select ${name} ${req}><option value=""></option>${CLIENTS.map(c => `<option value="${c.id}" ${c.id === val ? "selected" : ""}>${esc(c.artist_name ? `${c.artist_name} (${c.name})` : c.name)}</option>`).join("")}</select>`;
+  if (f.type === "longtext") return `<textarea ${name} ${req}>${esc(val)}</textarea>`;
+  if (f.type === "bool") return `<select ${name}><option value=""></option><option value="1" ${val === 1 ? "selected" : ""}>yes</option><option value="0" ${val === 0 ? "selected" : ""}>no</option></select>`;
+  const type = f.type === "date" ? "date" : f.type === "datetime" ? "datetime-local" : (f.type === "number" || f.type === "int") ? "number" : "text";
+  const shown = f.type === "datetime" ? String(val).slice(0, 16) : val;
+  return `<input type="${type}" ${type === "number" ? 'step="any"' : ""} ${name} value="${esc(shown)}" ${req}>`;
+}
+
+function formHtml(kind, row) {
+  const ent = SCHEMA[kind];
+  return `<form class="edit" data-kind="${kind}" data-id="${row ? row.id : ""}">
+    ${ent.fields.map(f => `<label class="${f.type === "longtext" ? "full" : ""}">${esc(f.label)}${f.required ? " *" : ""}${input(f, row ? row[f.key] : (f.type === "select" && f.required ? f.options[0] : ""))}</label>`).join("")}
+    <div class="err" hidden></div>
+    <div class="btns"><button type="button" class="ghost" data-act="cancel">Cancel</button><button>${row ? "Save changes" : "Add " + esc(ent.label)}</button></div>
+  </form>`;
+}
+
+async function renderPanel(kind) {
+  const ent = SCHEMA[kind];
+  const q = searches[kind] || "";
+  const rows = await api(`/api/records/${kind}` + (q ? `?q=${encodeURIComponent(q)}` : ""));
+  const cols = ent.fields.filter(f => f.show);
+  const extra = EXTRA[kind] || [];
+  const isEditingHere = editing && editing.kind === kind;
+  const editRow = isEditingHere && editing.id ? rows.find(r => r.id === editing.id) : null;
+  return `<section class="card panel" data-panel="${kind}">
+    <div class="panel-head"><h2>${esc(ent.title)} <span class="mut">(${rows.length})</span></h2>
+      <input type="search" placeholder="Search…" data-search="${kind}" value="${esc(q)}">
+      <button class="small" data-act="add" data-kind="${kind}">+ Add</button></div>
+    ${isEditingHere && (!editing.id || editRow) ? formHtml(kind, editRow) : ""}
+    ${rows.length ? `<div class="tablewrap"><table>
+      <thead><tr>${cols.map(f => `<th>${esc(f.label)}</th>`).join("")}${extra.map(e => `<th>${e[1]}</th>`).join("")}<th></th></tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        ${cols.map(f => `<td class="${f.type === "longtext" || f.key === "title" || f.key === "rule" || f.key === "content" ? "wrap" : ""}">${cell(f, r)}</td>`).join("")}${extra.map(e => `<td>${e[2](r)}</td>`).join("")}
+        <td class="act">
+          ${kind === "goals" ? `<button class="small ghost" data-act="checkin" data-id="${r.id}" title="Done today">${r.done_today ? "✅" : "⬜️"}</button>` : ""}
+          <button class="small ghost" data-act="edit" data-kind="${kind}" data-id="${r.id}" aria-label="Edit">Edit</button>
+          <button class="small danger" data-act="delete" data-kind="${kind}" data-id="${r.id}" aria-label="Delete">Delete</button>
+        </td></tr>`).join("")}</tbody></table></div>`
+      : `<div class="empty">Nothing here yet — click “+ Add” or just tell AMO.</div>`}
+  </section>`;
+}
+
+async function renderManage() {
+  if (tab === "overview") return;
+  if (!SCHEMA) SCHEMA = await api("/api/schema");
+  if (TABS[tab].some(k => SCHEMA[k].fields.some(f => f.type === "client"))) CLIENTS = await api("/api/records/clients");
+  const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.search : null;
+  const html = (await Promise.all(TABS[tab].map(renderPanel))).join("");
+  // Don't wipe a form the user is typing in when a live update arrives.
+  if (document.querySelector("#manage form.edit") && renderManage.live) return;
+  $("manage").innerHTML = html;
+  if (focused) { const el = document.querySelector(`[data-search="${focused}"]`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
+}
+
+function showTab(name) {
+  tab = TABS[name] || name === "overview" ? name : "overview";
+  editing = null;
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+  $("overview").hidden = tab !== "overview";
+  $("manage").hidden = tab === "overview";
+  try { history.replaceState(null, "", "#" + tab); } catch {}
+  (tab === "overview" ? load() : renderManage()).catch(e => toast("Error: " + e.message));
+}
+$("tabs").onclick = e => { const b = e.target.closest("button[data-tab]"); if (b) showTab(b.dataset.tab); };
+
+$("manage").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-act]"); if (!b) return;
+  const act = b.dataset.act, kind = b.dataset.kind, id = b.dataset.id ? Number(b.dataset.id) : null;
+  try {
+    if (act === "add") { editing = {kind, id: null}; await renderManage(); document.querySelector("#manage form.edit input, #manage form.edit select")?.focus(); }
+    else if (act === "edit") { editing = {kind, id}; await renderManage(); }
+    else if (act === "cancel") { editing = null; await renderManage(); }
+    else if (act === "checkin") { await api(`/api/goals/${id}/checkin`, {method: "POST", body: "{}"}); toast("Checked in ✓"); await renderManage(); }
+    else if (act === "delete") {
+      const label = SCHEMA[kind].label;
+      const name = b.closest("tr").querySelector("td").textContent.trim();
+      if (!confirm(`Delete ${label} “${name}”? This can't be undone.`)) return;
+      const r = await api(`/api/records/${kind}/${id}`, {method: "DELETE"});
+      toast(`Deleted ${r.label} “${r.name}”`); await renderManage();
+    }
+  } catch (err) { toast("Error: " + err.message); }
+});
+
+$("manage").addEventListener("submit", async e => {
+  e.preventDefault();
+  const form = e.target, kind = form.dataset.kind, id = form.dataset.id;
+  const data = {};
+  for (const el of form.elements) if (el.name) data[el.name] = el.value === "" ? null : el.value;
+  try {
+    if (id) { await api(`/api/records/${kind}/${id}`, {method: "PATCH", body: JSON.stringify(data)}); toast("Saved ✓"); }
+    else { await api(`/api/records/${kind}`, {method: "POST", body: JSON.stringify(data)}); toast(`Added ${SCHEMA[kind].label} ✓`); }
+    editing = null; await renderManage();
+  } catch (err) { const box = form.querySelector(".err"); box.hidden = false; box.textContent = err.message; }
+});
+
+let searchTimer;
+$("manage").addEventListener("input", e => {
+  const k = e.target.dataset.search; if (!k) return;
+  searches[k] = e.target.value;
+  clearTimeout(searchTimer); searchTimer = setTimeout(() => renderManage().catch(() => {}), 250);
+});
+
+// ---- live updates: anything changed by voice, chat or another window shows up within ~2s
+let lastVersion = null;
+async function watchChanges() {
+  try {
+    const {v} = await api("/api/version");
+    if (lastVersion !== null && v !== lastVersion) {
+      if (tab === "overview") await load();
+      else { renderManage.live = true; try { await renderManage(); } finally { renderManage.live = false; } }
+    }
+    lastVersion = v;
+  } catch {}
+  setTimeout(watchChanges, 2000);
+}
+
+showTab((location.hash || "#overview").slice(1));
+watchChanges();
+setInterval(() => { if (tab === "overview") load().catch(() => {}); }, 60000);
 </script>
 </body>
 </html>

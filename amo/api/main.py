@@ -610,6 +610,48 @@ def patch_cravvr_task(task_id: int, s: TaskStatus):
     return _ok(_guard(Cravvr(get_db()).set_status, task_id, s.status))
 
 
+# ======================================================== manage anything (dashboard tabs)
+@app.get("/api/version", dependencies=[Depends(auth)])
+def version():
+    """Changes whenever any data changes (voice, chat or dashboard) — the dashboard polls this."""
+    return {"v": get_db().data_version()}
+
+
+@app.get("/api/schema", dependencies=[Depends(auth)])
+def record_schema():
+    from .. import records
+
+    return records.schema()
+
+
+@app.get("/api/records/{kind}", dependencies=[Depends(auth)])
+def records_list(kind: str, q: Optional[str] = None):
+    from .. import records
+
+    return _guard(records.list_records, kind, q)
+
+
+@app.post("/api/records/{kind}", dependencies=[Depends(auth)])
+def records_create(kind: str, data: dict[str, Any]):
+    from .. import records
+
+    return _guard(records.create, kind, data)
+
+
+@app.patch("/api/records/{kind}/{item_id}", dependencies=[Depends(auth)])
+def records_update(kind: str, item_id: int, data: dict[str, Any]):
+    from .. import records
+
+    return _guard(records.update, kind, item_id, data)
+
+
+@app.delete("/api/records/{kind}/{item_id}", dependencies=[Depends(auth)])
+def records_delete(kind: str, item_id: int):
+    from .. import records
+
+    return _guard(records.delete, kind, item_id)
+
+
 # ======================================================== dashboard UI
 @app.get("/", include_in_schema=False)
 def index():
