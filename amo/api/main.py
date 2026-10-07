@@ -177,7 +177,9 @@ async def speech(req: SpeechRequest):
     from ..voice.tts import synthesize
 
     try:
-        wav = await run_in_threadpool(synthesize, req.input)
+        # Open WebUI sends its own voice name ("default", "alloy"…); those mean "AMO's voice".
+        voice = req.voice if req.voice not in ("", "default", "alloy") else None
+        wav = await run_in_threadpool(synthesize, req.input, voice)
     except VoiceUnavailable as e:
         raise HTTPException(503, str(e)) from e
     return Response(wav, media_type="audio/wav")

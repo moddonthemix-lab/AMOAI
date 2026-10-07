@@ -10,6 +10,9 @@
   amo import FILE         import facts (one per line / bullet) from a text or markdown file
   amo use MODEL           download a model and switch AMO to it (e.g. amo use gemma4:e2b)
   amo bench [MODEL ...]   time models on this computer and check they can save data
+  amo voices              list voice presets and the British voices on this Mac
+  amo try-voice [PRESET]  hear a voice before choosing it
+  amo set-voice PRESET    switch AMO's voice + personality (computer, jarvis, british-female, default)
   amo brief               print today's brief
   amo learn               extract facts from recent conversations now
   amo reflect             run the weekly reflection now
@@ -215,6 +218,77 @@ def cmd_bench(a):
     print("\nPick the fastest model with ✓, then:  amo use <model>")
 
 
+SAMPLE_LINES = {
+    "computer": "Good evening. I've reviewed your schedule. It's about as organised as I expected.",
+    "jarvis": "Good evening. Your studio is booked at seven, and revenue is up twelve percent this week.",
+    "british-female": "Good evening. You have two sessions today and one item ready to list.",
+    "default": "Hey, I'm AMO. You have two sessions today and one item ready to list.",
+}
+
+
+def _play(wav: bytes) -> None:
+    import subprocess
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        f.write(wav)
+    if sys.platform == "darwin":
+        subprocess.run(["afplay", f.name], check=False)
+    else:
+        print(f"saved to {f.name}")
+
+
+def _ensure_piper_voice(style) -> None:
+    from .voice.tts import download_piper_voice, piper_installed, piper_path
+
+    if piper_installed() and not piper_path(style.piper).is_file():
+        print(f"downloading Piper voice {style.piper} …")
+        try:
+            download_piper_voice(style.piper)
+        except Exception as e:  # noqa: BLE001
+            print(f"  couldn't download it ({e}); using the built-in Mac voice instead")
+
+
+def cmd_voices(_a):
+    from .voice.tts import PRESETS, mac_voices, piper_installed
+
+    print("Presets (amo set-voice NAME):")
+    for name, st in PRESETS.items():
+        print(f"  {name:<15} pitch {st.pitch:+g}, robot {st.robot:g}, personality {st.personality}")
+    print(f"\nEngine: {'Piper (neural voices)' if piper_installed() else 'built-in macOS voices'}")
+    british = [v for v in mac_voices() if v in ("Daniel", "Oliver", "Arthur", "Kate", "Serena", "Stephanie", "Martha", "Jamie")]
+    if british:
+        print("British voices on this Mac: " + ", ".join(british))
+        print("More (higher quality): System Settings → Accessibility → Spoken Content → System voice → Manage Voices… → English (UK)")
+
+
+def cmd_try_voice(a):
+    from .voice.tts import PRESETS, resolve_style, synthesize
+
+    name = a.preset or settings.voice
+    style = resolve_style(name)
+    _ensure_piper_voice(style)
+    text = " ".join(a.text) if a.text else SAMPLE_LINES.get(name, SAMPLE_LINES["default"])
+    if name not in PRESETS:
+        print(f"(custom voice {name})")
+    _play(synthesize(text, name))
+
+
+def cmd_set_voice(a):
+    from .voice.tts import PRESETS, resolve_style
+
+    if a.preset not in PRESETS and not a.preset.startswith("say:") and "-" not in a.preset:
+        print("unknown voice. Options: " + ", ".join(PRESETS) + "  (or a Piper voice name, or say:<Mac voice>)")
+        sys.exit(1)
+    style = resolve_style(a.preset)
+    _ensure_piper_voice(style)
+    _set_env("AMO_VOICE", a.preset)
+    if not a.keep_personality:
+        _set_env("AMO_PERSONALITY", style.personality)
+    print(f"voice: {a.preset}" + ("" if a.keep_personality else f", personality: {style.personality}"))
+    _restart_server()
+
+
 def cmd_remember(a):
     from .memory import Memory
 
@@ -317,6 +391,16 @@ def main(argv: list[str] | None = None) -> None:
     b = sub.add_parser("bench", help="time models on this computer")
     b.add_argument("models", nargs="*")
     b.set_defaults(fn=cmd_bench)
+
+    sub.add_parser("voices", help="list voice presets").set_defaults(fn=cmd_voices)
+    tv = sub.add_parser("try-voice", help="hear a voice")
+    tv.add_argument("preset", nargs="?")
+    tv.add_argument("text", nargs="*")
+    tv.set_defaults(fn=cmd_try_voice)
+    sv = sub.add_parser("set-voice", help="switch AMO's voice (and personality)")
+    sv.add_argument("preset")
+    sv.add_argument("--keep-personality", action="store_true", help="change only the voice")
+    sv.set_defaults(fn=cmd_set_voice)
 
     sub.add_parser("brief", help="print today's brief").set_defaults(fn=cmd_brief)
     sub.add_parser("learn", help="learn from recent conversations now").set_defaults(fn=cmd_learn)

@@ -38,10 +38,24 @@ How you work:
 - Be direct and brief, like a sharp chief of staff. Lead with the answer. No filler.
 - Dates: today is {today} ({weekday}), local time {time}. Convert relative dates ("Friday", "tomorrow at 7") to 'YYYY-MM-DD HH:MM' before calling tools.
 - If a tool returns an error (e.g. an ambiguous client), ask a short clarifying question.
-{voice_hint}
+{voice_hint}{personality}
 What you know about {owner}:
 {core}
 {relevant}{reflection}"""
+
+PERSONALITIES = {
+    "default": "",
+    "computer": (
+        "\nPersonality: you are a dry, deadpan, posh British computer with a sarcastic wit. "
+        "Crisp, lightly condescending, theatrically unimpressed — but loyal, and you always get the "
+        "task exactly right. At most one short quip per reply. Never mock {owner}'s goals, money "
+        "worries, health or anything serious, and never use *actions in asterisks*.\n"
+    ),
+    "jarvis": (
+        "\nPersonality: a polished, unflappable British AI butler. Courteous, understated, quietly "
+        "witty, always one step ahead. Address {owner} by name now and then.\n"
+    ),
+}
 
 VOICE_HINT = (
     "- This is a VOICE conversation: answer in 1-3 short spoken sentences. No markdown, lists, "
@@ -73,6 +87,7 @@ class Agent:
             weekday=now.strftime("%A"),
             time=now.strftime("%H:%M"),
             voice_hint=VOICE_HINT if channel == "voice" else "",
+            personality=PERSONALITIES.get(settings.personality, "").format(owner=settings.owner_name),
             core=_format_memories(core) or "- (nothing yet — learn as you go)",
             relevant=("\nPossibly relevant memories:\n" + _format_memories(relevant) + "\n") if relevant else "",
             reflection=("\nYour latest weekly reflection (patterns you noticed):\n" + latest["summary"] + "\n")

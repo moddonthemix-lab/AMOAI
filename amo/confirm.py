@@ -7,8 +7,22 @@ exactly what happened — so it writes the confirmation itself.
 
 from __future__ import annotations
 
+import random
 from datetime import datetime
 from typing import Any, Callable
+
+from .config import settings
+
+# Dry one-liners for the "computer" personality's instant confirmations.
+COMPUTER_QUIPS = (
+    "Try to contain your excitement.",
+    "Filed with all the enthusiasm it deserves.",
+    "Another triumph of data entry.",
+    "Noted. Obviously.",
+    "I live to serve. Apparently.",
+    "Do try to keep up.",
+    "Riveting stuff.",
+)
 
 
 def _money(v: Any) -> str:
@@ -138,4 +152,7 @@ def instant_reply(calls: list[dict[str, Any]]) -> str | None:
             lines.append(fn(result, c["arguments"] if isinstance(c["arguments"], dict) else {}))
         except (KeyError, TypeError, ValueError):
             return None
-    return " ".join(lines)
+    reply = " ".join(lines)
+    if settings.personality == "computer":
+        reply += " " + random.choice(COMPUTER_QUIPS)
+    return reply

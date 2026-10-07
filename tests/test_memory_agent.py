@@ -149,3 +149,43 @@ def test_learning_waits_until_quiet(db, llm, monkeypatch):
     assert "learn" not in tick(db, last + timedelta(minutes=1))
     llm.script({"role": "assistant", "content": '{"facts": []}'})
     assert "learn" in tick(db, last + timedelta(minutes=6))
+
+
+def test_voice_presets_and_effects(monkeypatch):
+    import io
+    import wave
+
+    from amo.config import settings
+    from amo.voice import tts
+
+    monkeypatch.setattr(settings, "voice", "computer")
+    style = tts.resolve_style()
+    assert style.personality == "computer" and style.pitch < 0 and style.robot > 0
+    assert tts.resolve_style("say:Daniel").say == ("Daniel",)
+    assert tts.resolve_style("en_GB-alan-medium").piper == "en_GB-alan-medium"
+    assert tts.clean_for_speech("**Booked** ✅ Jay") == "Booked Jay"
+
+    # 1s of 220Hz tone through the effects: still valid mono 16-bit audio, pitch-shifted shorter/longer.
+    import numpy as np
+
+    rate = 22050
+    tone = (np.sin(2 * np.pi * 220 * np.arange(rate) / rate) * 12000).astype(np.int16)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1), w.setsampwidth(2), w.setframerate(rate), w.writeframes(tone.tobytes())
+    out = tts.apply_effects(buf.getvalue(), pitch=-1.5, robot=0.3)
+    with wave.open(io.BytesIO(out)) as w:
+        assert w.getframerate() == rate and w.getsampwidth() == 2
+        assert w.getnframes() > rate  # lower pitch → resampled longer
+
+
+def test_computer_personality(db, llm, monkeypatch):
+    from amo.config import settings
+    from amo.confirm import COMPUTER_QUIPS
+
+    monkeypatch.setattr(settings, "personality", "computer")
+    assert "sarcastic" in Agent(db).build_system_prompt("hi")
+    llm.script(tool_call("add_goal", title="Make one beat"))
+    out = Agent(db).chat([{"role": "user", "content": "add a daily goal: make one beat"}])
+    assert out["content"].startswith("New daily goal: Make one beat.")
+    assert any(out["content"].endswith(q) for q in COMPUTER_QUIPS)
