@@ -218,3 +218,48 @@ def test_amo_voice_is_clean_obadiah_with_computer_personality(monkeypatch):
     assert tts.active_personality() == "computer"
     monkeypatch.setattr(settings, "personality", "jarvis")
     assert tts.active_personality() == "jarvis"
+
+
+def test_goal_requests_are_saved_directly_without_the_model(db, llm):
+    from amo.fastpath import match
+
+    assert match("Add a new daily goal: make one beat") == ("add_goal", {"title": "Make one beat", "cadence": "daily"})
+    assert match("hey AMO can you add a weekly goal to post 3 reels") == \
+        ("add_goal", {"title": "Post 3 reels", "cadence": "weekly"})
+    assert match("remember that Marcus engineers on Tuesdays")[0] == "remember"
+    assert match("what are my goals?") is None
+
+    out = Agent(db).chat([{"role": "user", "content": "add a new daily goal: make one beat"}])
+    assert llm.calls == []  # no model needed
+    assert out["content"] == "New daily goal: Make one beat."
+    assert db.scalar("SELECT title FROM goals") == "Make one beat"
+
+
+def test_model_claiming_a_save_without_doing_it_is_made_to_do_it(db, llm):
+    llm.script(
+        {"role": "assistant", "content": "Sure! I've added that to your goals and will track it daily."},
+        tool_call("add_goal", title="Drink more water", cadence="daily"),
+    )
+    out = Agent(db).chat([{"role": "user", "content": "I want to track drinking more water every day, add it"}])
+    assert len(llm.calls) == 2
+    assert out["content"] == "New daily goal: Drink more water."
+    assert db.scalar("SELECT COUNT(*) FROM goals") == 1
+
+
+def test_never_pretends_when_nothing_was_saved(db, llm):
+    llm.script(
+        {"role": "assistant", "content": "Done, I've booked that for you."},
+        {"role": "assistant", "content": "Yes, it's booked."},
+    )
+    out = Agent(db).chat([{"role": "user", "content": "book jay for friday"}])
+    assert out["content"].startswith("Sorry — I didn't manage to save that")
+    assert db.scalar("SELECT COUNT(*) FROM studio_sessions") == 0
+
+
+def test_dashboard_shows_weekly_goals_too(db):
+    from amo.finance import dashboard
+    from amo.goals import Goals
+
+    Goals(db).add("Make one beat")
+    Goals(db).add("Post 3 reels", cadence="weekly")
+    assert [g["title"] for g in dashboard(db)["goals"]] == ["Make one beat", "Post 3 reels"]

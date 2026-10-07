@@ -57,7 +57,7 @@
     <div class="bar"><i id="rev-bar" style="width:0"></i></div><div class="mut" id="rev-target"></div>
     <svg id="spark" viewBox="0 0 140 40" preserveAspectRatio="none"></svg><div id="rev-biz"></div></section>
   <section class="card"><h2>Studio · today</h2><div id="studio"></div></section>
-  <section class="card"><h2>Daily goals</h2><div id="goals"></div></section>
+  <section class="card"><h2>Goals</h2><div id="goals"></div></section>
   <section class="card"><h2>Trading</h2><div id="trading"></div></section>
   <section class="card"><h2>Reselling</h2><div id="resale"></div></section>
   <section class="card"><h2>Notifications</h2><div id="notes"></div></section>
@@ -103,7 +103,7 @@ async function load() {
   $("rev-biz").innerHTML = Object.entries(rv.by_business).map(([k, v]) => row(k, money(v), sign(v))).join("");
   $("studio").innerHTML = (d.studio.today.length ? d.studio.today.map(s => row(`${s.time} ${esc(s.client)}`, `${esc(s.service)} · ${s.hours}h`)).join("") : `<div class="mut">No sessions today</div>`)
     + row("Next 7 days", d.studio.upcoming_7d) + row("Unpaid sessions", d.studio.unpaid, d.studio.unpaid ? "neg" : "");
-  $("goals").innerHTML = d.goals.length ? d.goals.map(g => `<div class="row chk" data-id="${g.id}"><span>${g.done ? "✅" : "⬜️"} ${esc(g.title)}</span><span class="mut">🔥 ${g.streak}</span></div>`).join("") : `<div class="mut">No daily goals yet — tell AMO “add a daily goal: …”</div>`;
+  $("goals").innerHTML = d.goals.length ? d.goals.map(g => `<div class="row chk" data-id="${g.id}"><span>${g.done ? "✅" : "⬜️"} ${esc(g.title)}${g.cadence && g.cadence !== "daily" ? ` <span class="mut">(${esc(g.cadence)})</span>` : ""}</span><span class="mut">🔥 ${g.streak}</span></div>`).join("") : `<div class="mut">No goals yet — tell AMO “add a daily goal: …”</div>`;
   document.querySelectorAll(".chk").forEach(el => el.onclick = async () => { await api(`/api/goals/${el.dataset.id}/checkin`, {method: "POST", body: "{}"}); load(); });
   $("trading").innerHTML = row("Today P&L", money(d.trading.today_pnl), sign(d.trading.today_pnl)) + row("Week P&L", money(d.trading.week), sign(d.trading.week)) + row("Open positions", d.trading.open_positions);
   $("resale").innerHTML = row("Items in inventory", d.reselling.inventory) + row("Stale (30+ days)", d.reselling.stale, d.reselling.stale ? "neg" : "") + row("Cravvr open tasks", d.cravvr.open_tasks);

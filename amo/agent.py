@@ -4,13 +4,16 @@ local model with tools, and logs every exchange so it can learn from it."""
 from __future__ import annotations
 
 import json
+import re
 import logging
 import threading
 from typing import Any
 
 from . import tools
 from .config import settings
-from .confirm import instant_reply
+from . import fastpath
+from .confirm import CONFIRM, instant_reply
+from .voice.acks import kind_of
 from .voice.tts import active_personality
 from .db import Database, get_db, local_now, now_iso
 from .llm import LLMError, get_llm
@@ -124,13 +127,47 @@ class Agent:
         )
         schemas = tools.schemas(tools.route(recent_user))
         trace: list[dict[str, Any]] = []
+
+        # 1) Common, unambiguous requests ("add a daily goal: …") are done directly.
         content = ""
+        fast = fastpath.match(user_text) if user_text else None
+        if fast:
+            name, args = fast
+            result = json.loads(tools.call(name, args))
+            content = instant_reply([{"name": name, "arguments": args, "result": result}]) or ""
+            if content:
+                trace.append({"name": name, "arguments": args, "result": result})
+        if not content:  # no shortcut, or it failed: let the model handle it
+            content = self._tool_loop(llm, convo, schemas, model, trace)
+
+        # 2) The model claimed it saved something but never called a tool → make it actually do it.
+        if user_text and not _saved_anything(trace) and kind_of(user_text) == "action" and _CLAIM.search(content):
+            log.warning("model claimed an action without a tool call; retrying: %r", content[:120])
+            convo += [
+                {"role": "assistant", "content": content},
+                {"role": "user", "content": "You haven't actually saved anything — no tool was called. "
+                                            "Call the right tool now to do what I asked."},
+            ]
+            content = self._tool_loop(llm, convo, schemas, model, trace)
+            if not _saved_anything(trace):
+                content = ("Sorry — I didn't manage to save that. Try saying it again a bit more directly, "
+                           "for example: \"add a daily goal: make one beat\".")
+
+        self._log(channel, user_text, content)
+        # Fact learning normally runs from the scheduler once you've gone quiet, so it never
+        # competes with your next message for the CPU. learn=True forces it now (in background).
+        if learn:
+            threading.Thread(target=self._learn_safely, daemon=True).start()
+        return {"content": content, "tool_calls": trace}
+
+    def _tool_loop(self, llm: Any, convo: list[dict[str, Any]], schemas: list[dict[str, Any]],
+                   model: str | None, trace: list[dict[str, Any]]) -> str:
+        """Let the model call tools until it answers. Appends to `trace`, returns the reply."""
         for _ in range(MAX_TOOL_ROUNDS):
             msg = llm.chat(convo, model=model, tools=schemas)
             calls = msg.get("tool_calls") or []
             if not calls:
-                content = msg.get("content", "")
-                break
+                return msg.get("content", "")
             convo.append({"role": "assistant", "content": msg.get("content", ""), "tool_calls": calls})
             round_trace: list[dict[str, Any]] = []
             for c in calls:
@@ -144,19 +181,10 @@ class Agent:
             # Pure saves (booking, logging a trade…) don't need a second model pass to confirm.
             quick = instant_reply(round_trace)
             if quick:
-                content = quick
-                break
-        else:
-            # Ran out of tool rounds: ask for a final answer without tools.
-            content = llm.chat(convo + [{"role": "user", "content": "Summarize what you did."}],
-                               model=model).get("content", "")
-
-        self._log(channel, user_text, content)
-        # Fact learning normally runs from the scheduler once you've gone quiet, so it never
-        # competes with your next message for the CPU. learn=True forces it now (in background).
-        if learn:
-            threading.Thread(target=self._learn_safely, daemon=True).start()
-        return {"content": content, "tool_calls": trace}
+                return quick
+        # Ran out of tool rounds: ask for a final answer without tools.
+        return llm.chat(convo + [{"role": "user", "content": "Summarize what you did."}],
+                        model=model).get("content", "")
 
     def _log(self, channel: str, user_text: str, reply: str) -> None:
         ts = now_iso()
@@ -175,6 +203,17 @@ class Agent:
             learn_from_conversations(self.db)
         except (LLMError, ValueError) as e:
             log.warning("background learning skipped: %s", e)
+
+
+_CLAIM = re.compile(
+    r"\b(added|adding|i'?ve added|i'?ll add|booked|logged|saved|recorded|created|scheduled|tracked|"
+    r"i'?ll track|tracking|noted|marked|updated|set up|all set|done)\b", re.I)
+
+
+def _saved_anything(trace: list[dict[str, Any]]) -> bool:
+    """Did any save-type tool succeed this turn?"""
+    return any(t["name"] in CONFIRM and isinstance(t["result"], dict) and "error" not in t["result"]
+               for t in trace)
 
 
 def _flatten(m: dict[str, Any]) -> dict[str, Any]:

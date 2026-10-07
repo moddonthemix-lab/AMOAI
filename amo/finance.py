@@ -107,8 +107,9 @@ def dashboard(db: Database | None = None) -> dict[str, Any]:
             "unpaid": len(crm.unpaid_sessions()),
         },
         "goals": [
-            {"id": g["id"], "title": g["title"], "done": g["done_today"], "streak": g["streak"]}
-            for g in goals.today_list()
+            {"id": g["id"], "title": g["title"], "done": g["done_today"], "streak": g["streak"],
+             "cadence": g["cadence"], "area": g["area"]}
+            for g in goals.active()
         ],
         "revenue": {
             "today": fin.revenue("today")["total"],
