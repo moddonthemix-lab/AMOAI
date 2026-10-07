@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "modd"
+version = "0.1.0"
+description = "A local, private personal assistant for the studio, Cravvr, reselling and trading."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []  # core runs on the standard library + Ollama
+
+[project.optional-dependencies]
+voice = ["faster-whisper>=1.0", "sounddevice>=0.4", "numpy>=1.24", "pyttsx3>=2.90", "soundfile>=0.12"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+modd = "modd.cli:main"
+
+[tool.setuptools]
+packages = ["modd"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
