@@ -8,6 +8,8 @@
   amo remember "fact"     save a memory
   amo memories [query]    list or search memories
   amo import FILE         import facts (one per line / bullet) from a text or markdown file
+  amo use MODEL           download a model and switch AMO to it (e.g. amo use gemma4:e2b)
+  amo bench [MODEL ...]   time models on this computer and check they can save data
   amo brief               print today's brief
   amo learn               extract facts from recent conversations now
   amo reflect             run the weekly reflection now
@@ -110,6 +112,109 @@ def cmd_setup_voice(_a):
     print("Piper voice ready.")
 
 
+def _restart_server() -> None:
+    """Restart the background AMO server (macOS launchd) so it picks up .env changes."""
+    import os
+    import subprocess
+
+    plist = Path.home() / "Library/LaunchAgents/com.amo.server.plist"
+    if sys.platform == "darwin" and plist.exists():
+        subprocess.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/com.amo.server"], check=False)
+        print("restarted AMO")
+    else:
+        print("restart AMO (amo serve) to apply")
+
+
+def _set_env(key: str, value: str) -> Path:
+    import re
+
+    from .config import env_file
+
+    path = env_file()
+    text = path.read_text() if path.exists() else ""
+    line = f"{key}={value}"
+    if re.search(rf"^{key}=.*$", text, flags=re.M):
+        text = re.sub(rf"^{key}=.*$", line, text, flags=re.M)
+    else:
+        text = text.rstrip("\n") + f"\n{line}\n"
+    path.write_text(text)
+    return path
+
+
+def _pull(model: str) -> None:
+    from .llm import get_llm
+
+    last = ""
+    for status in get_llm().pull(model):
+        if status != last:
+            print(f"\r  {status:<60}", end="", flush=True)
+            last = status
+    print()
+
+
+def cmd_use(a):
+    from .llm import LLMError, get_llm
+
+    if not get_llm().list_models() and not a.skip_pull:
+        print("Ollama isn't running — open the Ollama app first.")
+        sys.exit(1)
+    if not a.skip_pull:
+        print(f"downloading {a.model} …")
+        try:
+            _pull(a.model)
+        except (LLMError, Exception) as e:  # noqa: BLE001 — show any pull failure plainly
+            print(f"couldn't download {a.model}: {e}")
+            sys.exit(1)
+    key = "AMO_FAST_MODEL" if a.fast else "AMO_CHAT_MODEL"
+    path = _set_env(key, a.model)
+    print(f"{key}={a.model}  (saved in {path})")
+    _restart_server()
+
+
+def cmd_bench(a):
+    """Time each model on this machine: load, a greeting, and a real booking that must be saved."""
+    import time
+    from datetime import timedelta
+
+    from .agent import Agent
+    from .crm import StudioCRM
+    from .db import Database, set_db, today
+    from .llm import LLMError, get_llm
+
+    llm = get_llm()
+    installed = llm.list_models()
+    models = a.models or [settings.chat_model]
+    tomorrow = (today() + timedelta(days=1)).isoformat()
+    print(f"{'model':<22} {'load':>7} {'greeting':>9} {'booking':>9}  saved booking?")
+    for m in models:
+        if not any(i == m or i == f"{m}:latest" for i in installed):
+            print(f"{m:<22} not downloaded — run: ollama pull {m}   (or: amo use {m})")
+            continue
+        db = Database(":memory:")
+        set_db(db)
+        StudioCRM(db).add_client("Jay Carter", artist_name="Lil Jay")
+        agent = Agent(db)
+        try:
+            t = time.time()
+            llm.chat([{"role": "user", "content": "hi"}], model=m)
+            load = time.time() - t
+            t = time.time()
+            agent.chat([{"role": "user", "content": "hey AMO"}], channel="cli", model=m, learn=False)
+            greet = time.time() - t
+            t = time.time()
+            agent.chat([{"role": "user", "content": "Book Lil Jay tomorrow at 7pm for 3 hours at $50 an hour"}],
+                       channel="cli", model=m, learn=False)
+            book = time.time() - t
+        except LLMError as e:
+            print(f"{m:<22} error: {e}")
+            continue
+        s = db.one("SELECT starts_at, hours, rate FROM studio_sessions")
+        ok = bool(s) and s["starts_at"].startswith(f"{tomorrow}T19") and s["hours"] == 3 and s["rate"] == 50
+        detail = "✓ correct" if ok else (f"✗ wrong ({s['starts_at']}, {s['hours']}h, ${s['rate']})" if s else "✗ not saved")
+        print(f"{m:<22} {load:>6.1f}s {greet:>8.1f}s {book:>8.1f}s  {detail}")
+    print("\nPick the fastest model with ✓, then:  amo use <model>")
+
+
 def cmd_remember(a):
     from .memory import Memory
 
@@ -202,6 +307,16 @@ def main(argv: list[str] | None = None) -> None:
     im.add_argument("-c", "--category", default="general")
     im.add_argument("-i", "--importance", type=int, default=4)
     im.set_defaults(fn=cmd_import)
+
+    u = sub.add_parser("use", help="download a model and switch AMO to it")
+    u.add_argument("model")
+    u.add_argument("--fast", action="store_true", help="set the background (learning) model instead")
+    u.add_argument("--skip-pull", action="store_true", help="don't download, just switch")
+    u.set_defaults(fn=cmd_use)
+
+    b = sub.add_parser("bench", help="time models on this computer")
+    b.add_argument("models", nargs="*")
+    b.set_defaults(fn=cmd_bench)
 
     sub.add_parser("brief", help="print today's brief").set_defaults(fn=cmd_brief)
     sub.add_parser("learn", help="learn from recent conversations now").set_defaults(fn=cmd_learn)

@@ -19,7 +19,18 @@ def _load_dotenv(path: Path) -> None:
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
-_load_dotenv(Path(os.environ.get("AMO_ENV_FILE", ".env")))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def env_file() -> Path:
+    """The .env in use: $AMO_ENV_FILE, else ./.env, else the one in the AMO folder."""
+    if os.environ.get("AMO_ENV_FILE"):
+        return Path(os.environ["AMO_ENV_FILE"])
+    local = Path(".env")
+    return local if local.is_file() else PROJECT_ROOT / ".env"
+
+
+_load_dotenv(env_file())
 
 
 def _env(key: str, default: str) -> str:
@@ -50,6 +61,12 @@ class Settings:
 
     ntfy_url: str = field(default_factory=lambda: _env("AMO_NTFY_URL", ""))
     ntfy_topic: str = field(default_factory=lambda: _env("AMO_NTFY_TOPIC", "amo"))
+
+    # Model runtime: context window (tokens), how long Ollama keeps the model loaded,
+    # and whether "thinking" models (qwen3, gemma4…) may think before answering (slow on CPU).
+    num_ctx: int = field(default_factory=lambda: int(_env("AMO_NUM_CTX", "8192")))
+    keep_alive: str = field(default_factory=lambda: _env("AMO_KEEP_ALIVE", "30m"))
+    think: bool = field(default_factory=lambda: _env("AMO_THINK", "0") in ("1", "true", "yes"))
 
     # Monthly revenue target shown on the dashboard (0 = none).
     monthly_revenue_target: float = field(

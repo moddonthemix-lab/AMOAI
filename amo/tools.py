@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -394,9 +395,64 @@ def send_notification(title: str, body: str = "", level: str = "info"):
     return _notify(title, body, level)
 
 
+# ---------------------------------------------------------------- routing
+# Sending all ~34 tool definitions costs ~4k prompt tokens per message, which is slow on a
+# CPU-only machine. Each message only gets the tool groups it plausibly needs.
+CORE = ["remember", "recall"]
+GROUPS: dict[str, tuple[list[str], str]] = {
+    "studio": (
+        ["add_client", "find_client", "update_client", "book_session", "update_session",
+         "complete_session", "record_payment", "studio_schedule", "upcoming_sessions",
+         "unpaid_sessions", "clients_to_follow_up"],
+        r"client|artist|\bbook|session|studio|schedul|calendar|recording|\bmix|master|\bpaid|\bpay|\bowe|"
+        r"balance|\brate\b|follow.?up|no.?show|cancel|resched|\bcash ?app|zelle|venmo",
+    ),
+    "reselling": (
+        ["add_resale_item", "list_resale_item", "mark_item_sold", "resale_inventory", "resale_summary"],
+        r"bought|\bbuy|\bsold|\bsell|flip|resell|resale|inventory|listing|\blist(ed)?\b|ebay|stockx|goat|"
+        r"mercari|depop|poshmark|sneaker|shoe|jordan|\bdunk|yeezy|\bitem|margin|\broi\b",
+    ),
+    "trading": (
+        ["log_trade", "close_trade", "open_positions", "trading_stats", "trading_rules", "add_trading_rule"],
+        r"trad(e|es|ing)|\blong\b|\bshort\b|\bstop\b|entry|\bexit|p&l|\bpnl|position|\brules?\b|setup|"
+        r"futures|options|\bcalls?\b|\bputs?\b|\bes\b|\bnq\b|\bmnq\b|\bspy\b|\bqqq\b|ticker|win ?rate|contracts?",
+    ),
+    "goals": (
+        ["add_goal", "check_in_goal", "list_goals"],
+        r"goal|streak|habit|check.?in|\bdone\b|finished|completed|daily",
+    ),
+    "cravvr": (
+        ["add_cravvr_task", "update_cravvr_task", "cravvr_tasks"],
+        r"cravvr|\btasks?\b|to.?do",
+    ),
+    "money": (
+        ["revenue", "overview", "record_payment"],
+        r"revenue|money|\bmade\b|\bmake\b|income|earn|profit|target|how am i doing|how.?s (my|business)|"
+        r"overview|summary|brief|dashboard|this (week|month)|today|plan my day|what.?s (up|next|on)",
+    ),
+    "admin": (
+        ["forget", "send_notification"],
+        r"forget|wrong|outdated|remind|notify|notification|alert",
+    ),
+}
+_GROUP_RE = {g: re.compile(rx, re.I) for g, (_, rx) in GROUPS.items()}
+
+
+def route(text: str) -> list[str]:
+    """Pick the tool names relevant to `text` (recent user messages)."""
+    names = list(CORE)
+    for g, (group_tools, _) in GROUPS.items():
+        if _GROUP_RE[g].search(text):
+            names += [t for t in group_tools if t not in names]
+    return names
+
+
 # Sanity check at import: every declared param exists on the function.
 for _t in REGISTRY.values():
     _sig = inspect.signature(_t.fn)
     _has_kw = any(p.kind is p.VAR_KEYWORD for p in _sig.parameters.values())
     for _p in _t.params:
         assert _has_kw or _p in _sig.parameters, f"{_t.name}: param {_p} not in signature"
+for _g, (_names, _) in GROUPS.items():
+    for _n in _names:
+        assert _n in REGISTRY, f"routing group {_g}: unknown tool {_n}"

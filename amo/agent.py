@@ -102,7 +102,10 @@ class Agent:
             *history,
         ]
         llm = get_llm()
-        schemas = tools.schemas()
+        recent_user = " ".join(
+            m["content"] for m in history[-6:] if m["role"] == "user" and isinstance(m["content"], str)
+        )
+        schemas = tools.schemas(tools.route(recent_user))
         trace: list[dict[str, Any]] = []
         content = ""
         for _ in range(MAX_TOOL_ROUNDS):

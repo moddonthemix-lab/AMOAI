@@ -75,3 +75,41 @@ def test_missing_model_error_is_helpful(monkeypatch):
                                                                      request=httpx.Request("POST", "http://x")))
     with pytest.raises(LLMError, match="ollama pull llama3.2:3b"):
         Ollama("http://x").chat([{"role": "user", "content": "hi"}], model="llama3.2:3b")
+
+
+def test_tool_routing_keeps_prompts_small():
+    from amo.tools import route
+
+    assert route("hey AMO") == ["remember", "recall"]
+    studio = route("Book Lil Jay tomorrow at 7pm for 3 hours at $50")
+    assert "book_session" in studio and "log_trade" not in studio
+    assert "mark_item_sold" in route("sold the jordans on stockx for 320")
+    assert "log_trade" in route("long NQ at 18000 stop 17980")
+    assert "revenue" in route("how much did I make this month?")
+
+
+def test_agent_sends_only_routed_tools(db, llm):
+    Agent(db).chat([{"role": "user", "content": "hey"}], learn=False)
+    sent = [t["function"]["name"] for t in llm.calls[0]["tools"]]
+    assert sent == ["remember", "recall"]
+
+
+def test_runtime_params(monkeypatch):
+    from amo.config import settings
+    from amo.llm import runtime_params
+
+    p = runtime_params("llama3.2:3b", {"temperature": 0})
+    assert p["options"] == {"num_ctx": settings.num_ctx, "temperature": 0} and "think" not in p
+    assert runtime_params("gemma4:e2b")["think"] is False
+    assert runtime_params("qwen3:4b")["think"] is False
+
+
+def test_set_env(tmp_path, monkeypatch):
+    from amo.cli import _set_env
+
+    env = tmp_path / ".env"
+    env.write_text("AMO_CHAT_MODEL=llama3.2:3b\nAMO_API_KEY=\n")
+    monkeypatch.setenv("AMO_ENV_FILE", str(env))
+    _set_env("AMO_CHAT_MODEL", "gemma4:e2b")
+    _set_env("AMO_THINK", "0")
+    assert env.read_text() == "AMO_CHAT_MODEL=gemma4:e2b\nAMO_API_KEY=\nAMO_THINK=0\n"
