@@ -53,12 +53,22 @@ const money = n => (n < 0 ? "-$" : "$") + Math.abs(n || 0).toLocaleString(undefi
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let key = ""; try { key = localStorage.getItem("amo_key") || ""; } catch {}
 
-async function api(path, opts = {}) {
+function cleanKey(v) {
+  // Accept a pasted "AMO_API_KEY=abc", quotes or stray spaces.
+  return (v || "").trim().replace(/^AMO_API_KEY\s*=\s*/i, "").replace(/^["']|["']$/g, "").trim();
+}
+async function api(path, opts = {}, tries = 0) {
   const r = await fetch(path, {...opts, headers: {"Content-Type": "application/json", ...(key ? {Authorization: "Bearer " + key} : {})}});
   if (r.status === 401) {
-    key = prompt("AMO API key (AMO_API_KEY):") || "";
+    if (tries >= 3) {
+      try { localStorage.removeItem("amo_key"); } catch {}
+      throw new Error("AMO didn't accept that key. In Terminal run:  grep AMO_API_KEY ~/AMOAI/.env  and paste only the part after =. If it still fails, restart AMO:  cd ~/AMOAI && ./scripts/mac-autostart.sh install");
+    }
+    const entered = prompt((tries ? "That key didn't work. " : "") + "Paste your AMO API key (the part after AMO_API_KEY=):");
+    if (entered === null) throw new Error("An API key is needed to open the dashboard.");
+    key = cleanKey(entered);
     try { localStorage.setItem("amo_key", key); } catch {}
-    return api(path, opts);
+    return api(path, opts, tries + 1);
   }
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
   return r.json();

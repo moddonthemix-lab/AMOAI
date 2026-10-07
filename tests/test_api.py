@@ -60,3 +60,20 @@ def test_scheduler_brief_and_reminders(db, llm):
     assert tick(db, now) == []  # nothing runs twice
     assert db.scalar("SELECT COUNT(*) FROM notifications") == 2
     assert "Month so far" in morning_brief_text(db)
+
+
+def test_api_key_and_localhost_trust(client, monkeypatch):
+    from amo.config import settings
+
+    monkeypatch.setattr(settings, "api_key", "secret")
+    assert client.get("/api/dashboard").status_code == 401
+    assert client.get("/api/dashboard", headers={"Authorization": "Bearer secret"}).status_code == 200
+    # Requests from the same computer skip the key.
+    from fastapi.testclient import TestClient
+    from amo.api.main import app
+
+    with TestClient(app, client=("127.0.0.1", 5000)) as local:
+        assert local.get("/api/dashboard").status_code == 200
+    monkeypatch.setattr(settings, "trust_localhost", False)
+    with TestClient(app, client=("127.0.0.1", 5000)) as local:
+        assert local.get("/api/dashboard").status_code == 401

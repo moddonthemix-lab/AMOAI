@@ -32,7 +32,11 @@ class Settings:
     owner_name: str = field(default_factory=lambda: _env("AMO_OWNER_NAME", "Modd"))
     assistant_name: str = field(default_factory=lambda: _env("AMO_ASSISTANT_NAME", "AMO"))
     timezone: str = field(default_factory=lambda: _env("AMO_TIMEZONE", "America/New_York"))
-    api_key: str = field(default_factory=lambda: _env("AMO_API_KEY", ""))
+    api_key: str = field(default_factory=lambda: _env("AMO_API_KEY", "").strip())
+    # Requests from this same computer (127.0.0.1) don't need the API key.
+    trust_localhost: bool = field(
+        default_factory=lambda: _env("AMO_TRUST_LOCALHOST", "1") not in ("0", "false", "no")
+    )
 
     ollama_url: str = field(default_factory=lambda: _env("OLLAMA_URL", "http://localhost:11434"))
     chat_model: str = field(default_factory=lambda: _env("AMO_CHAT_MODEL", "llama3.1:8b"))

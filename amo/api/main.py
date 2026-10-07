@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal, Optional
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
@@ -59,10 +59,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AMO", version=__version__, lifespan=lifespan)
 
 
-def auth(authorization: Optional[str] = Header(default=None)) -> None:
+LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+
+
+def auth(request: Request, authorization: Optional[str] = Header(default=None)) -> None:
     if not settings.api_key:
         return
-    if authorization != f"Bearer {settings.api_key}":
+    if settings.trust_localhost and request.client and request.client.host in LOOPBACK:
+        return  # same computer: nothing to protect against
+    if (authorization or "").strip() != f"Bearer {settings.api_key}":
         raise HTTPException(401, "invalid or missing API key")
 
 
