@@ -21,10 +21,9 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 curl -fsSL "https://codeload.github.com/$REPO/tar.gz/refs/heads/$BRANCH" | tar -xz -C "$TMP"
 SRC="$(find "$TMP" -mindepth 1 -maxdepth 1 -type d | head -1)"
-rsync -a \
-  --exclude .env --exclude data --exclude models --exclude '.venv*' --exclude .git \
-  --exclude docs/about-me.md \
-  "$SRC/" "$ROOT/"
+# The download only contains code (no .env, data, models or Python environments),
+# so copying it over the install can't touch your settings or data.
+cp -R "$SRC/." "$ROOT/"
 chmod +x "$ROOT"/scripts/*.sh
 echo "  code updated"
 
