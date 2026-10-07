@@ -63,3 +63,15 @@ def test_weekly_reflection(db, llm):
     assert Memory(db).search("slowest studio day")
     # The reflection is fed back into future conversations.
     assert "Focus on follow-ups" in Agent(db).build_system_prompt("hi")
+
+
+def test_missing_model_error_is_helpful(monkeypatch):
+    import httpx
+    import pytest
+
+    from amo.llm import LLMError, Ollama
+
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: httpx.Response(404, json={"error": "model not found"},
+                                                                     request=httpx.Request("POST", "http://x")))
+    with pytest.raises(LLMError, match="ollama pull llama3.2:3b"):
+        Ollama("http://x").chat([{"role": "user", "content": "hi"}], model="llama3.2:3b")

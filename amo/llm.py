@@ -41,9 +41,15 @@ class Ollama:
             payload["format"] = fmt
         try:
             r = httpx.post(f"{self.base_url}/api/chat", json=payload, timeout=self.timeout)
-            r.raise_for_status()
         except httpx.HTTPError as e:
-            raise LLMError(f"Ollama chat failed: {e}") from e
+            raise LLMError(f"Can't reach Ollama at {self.base_url} — is the Ollama app running? ({e})") from e
+        if r.status_code == 404:
+            raise LLMError(
+                f"The AI model '{payload['model']}' isn't downloaded yet. "
+                f"In Terminal run:  ollama pull {payload['model']}   (or ./scripts/pull-models.sh)"
+            )
+        if r.is_error:
+            raise LLMError(f"Ollama error {r.status_code}: {r.text[:300]}")
         return r.json().get("message", {"role": "assistant", "content": ""})
 
     def stream_chat(
