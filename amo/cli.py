@@ -10,6 +10,7 @@
   amo import FILE         import facts (one per line / bullet) from a text or markdown file
   amo use MODEL           download a model and switch AMO to it (e.g. amo use gemma4:e2b)
   amo bench [MODEL ...]   time models on this computer and check they can save data
+  amo listen              hands-free: say "Hey AMO" (add -v to see what it hears)
   amo voices              list voice presets and the British voices on this Mac
   amo try-voice [PRESET]  hear a voice before choosing it
   amo set-voice PRESET    switch AMO's voice + personality (computer, jarvis, british-female, default)
@@ -104,6 +105,17 @@ def cmd_voice(a):
     from .voice.loop import run
 
     run(speak=not a.no_speak)
+
+
+def cmd_listen(a):
+    from .voice.listen import run
+    from .voice.stt import VoiceUnavailable
+
+    try:
+        run(verbose=a.verbose)
+    except VoiceUnavailable as e:
+        print(f"Voice isn't available: {e}")
+        sys.exit(1)
 
 
 def cmd_setup_voice(_a):
@@ -385,6 +397,9 @@ def main(argv: list[str] | None = None) -> None:
     v = sub.add_parser("voice", help="push-to-talk voice mode")
     v.add_argument("--no-speak", action="store_true", help="print replies instead of speaking them")
     v.set_defaults(fn=cmd_voice)
+    ls = sub.add_parser("listen", help='hands-free mode: say "Hey AMO"')
+    ls.add_argument("-v", "--verbose", action="store_true", help="print everything it hears")
+    ls.set_defaults(fn=cmd_listen)
     sub.add_parser("setup-voice", help="download the default Piper voice").set_defaults(fn=cmd_setup_voice)
 
     r = sub.add_parser("remember", help="save a memory")

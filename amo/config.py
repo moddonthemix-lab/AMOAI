@@ -64,6 +64,13 @@ class Settings:
     # Empty = whatever suits the voice preset (AMO's own voice → computer).
     personality: str = field(default_factory=lambda: _env("AMO_PERSONALITY", ""))
 
+    # Wake word ("Hey AMO"): a tiny Whisper model checks short bursts of speech for the phrase.
+    wake_model: str = field(default_factory=lambda: _env("AMO_WAKE_MODEL", "tiny.en"))
+    # Extra spellings Whisper might hear for "AMO", comma-separated (e.g. "amore,emu").
+    wake_words: str = field(default_factory=lambda: _env("AMO_WAKE_WORDS", ""))
+    # Mic sensitivity: higher = needs louder speech to wake (try 2–5).
+    wake_sensitivity: float = field(default_factory=lambda: float(_env("AMO_WAKE_SENSITIVITY", "3")))
+
     whisper_model: str = field(default_factory=lambda: _env("AMO_WHISPER_MODEL", "base.en"))
     piper_voice: str = field(
         default_factory=lambda: _env("AMO_PIPER_VOICE", "./models/piper/en_US-lessac-medium.onnx")

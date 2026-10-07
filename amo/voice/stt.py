@@ -8,7 +8,7 @@ from typing import Any
 
 from ..config import settings
 
-_model: Any = None
+_models: dict[str, Any] = {}
 _lock = threading.Lock()
 
 
@@ -16,17 +16,17 @@ class VoiceUnavailable(RuntimeError):
     pass
 
 
-def _get_model():
-    global _model
+def _get_model(name: str | None = None):
+    name = name or settings.whisper_model
     with _lock:
-        if _model is None:
+        if name not in _models:
             try:
                 from faster_whisper import WhisperModel
             except ImportError as e:
                 raise VoiceUnavailable('faster-whisper not installed: pip install -e ".[voice]"') from e
             # int8 runs well on CPU; faster-whisper uses CUDA automatically with device="auto".
-            _model = WhisperModel(settings.whisper_model, device="auto", compute_type="int8")
-        return _model
+            _models[name] = WhisperModel(name, device="auto", compute_type="int8")
+        return _models[name]
 
 
 def transcribe(audio: bytes | str, language: str | None = "en") -> str:
@@ -37,13 +37,15 @@ def transcribe(audio: bytes | str, language: str | None = "en") -> str:
     return " ".join(s.text.strip() for s in segments).strip()
 
 
-def transcribe_array(samples, sample_rate: int = 16000) -> str:
+def transcribe_array(samples, sample_rate: int = 16000, model: str | None = None,
+                     prompt: str | None = None) -> str:
     """Transcribe a float32 mono numpy array (from the microphone)."""
-    model = _get_model()
+    m = _get_model(model)
     if sample_rate != 16000:
         import numpy as np
 
         idx = np.linspace(0, len(samples) - 1, int(len(samples) * 16000 / sample_rate))
         samples = np.interp(idx, np.arange(len(samples)), samples).astype("float32")
-    segments, _ = model.transcribe(samples, language="en", vad_filter=True, beam_size=1)
+    segments, _ = m.transcribe(samples, language="en", vad_filter=False, beam_size=1,
+                               initial_prompt=prompt, condition_on_previous_text=False)
     return " ".join(s.text.strip() for s in segments).strip()

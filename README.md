@@ -90,6 +90,20 @@ Or just tell it things in chat — it remembers.
   for Terminal — say yes (System Settings → Privacy & Security → Microphone).
 - If Piper isn't available (e.g. on some Intel Macs), AMO speaks with the built-in macOS voice.
 
+### Hands-free: "Hey AMO"
+
+Double-click **AMO Listen.command** in the AMO folder (or run `amo listen`), allow microphone
+access, and talk:
+- "**Hey AMO**, what's on my schedule today?" — or just "Hey AMO", wait for the chime, then ask.
+- Follow-ups for a few seconds after an answer don't need "Hey AMO".
+- "**Good morning AMO**" reads your morning brief · "**what time is it**" · "**go to sleep**" /
+  "**Hey AMO, wake up**" · "**never mind**".
+
+Start it at login: System Settings → General → Login Items → **+** → `AMO Listen.command`.
+Tuning: `amo listen -v` prints what it hears. If it wakes too easily set `AMO_WAKE_SENSITIVITY=5`
+in `.env`; if it misses you, `2`. If Whisper keeps spelling the name differently, add it:
+`AMO_WAKE_WORDS=amor,emu`.
+
 ### AMO's voice
 
 AMO speaks as **Obadiah**, a clean, deadpan British voice (Piper), with a dry-wit personality to match.
