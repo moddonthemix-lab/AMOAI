@@ -51,6 +51,12 @@ async def lifespan(app: FastAPI):
 
         scheduler = Scheduler()
         scheduler.start()
+        # Pre-render the "Got it" / "Let me think" phrases so they play instantly.
+        import threading
+
+        from ..voice import acks
+
+        threading.Thread(target=acks.prewarm, daemon=True).start()
     yield
     if scheduler:
         scheduler.stop()
@@ -183,6 +189,22 @@ async def speech(req: SpeechRequest):
     except VoiceUnavailable as e:
         raise HTTPException(503, str(e)) from e
     return Response(wav, media_type="audio/wav")
+
+
+@app.get("/api/ack", dependencies=[Depends(auth)])
+async def ack(text: str = ""):
+    """A quick spoken acknowledgement ("Got it", "Okay, let me think") for `text`, as WAV."""
+    from ..voice import acks
+    from ..voice.stt import VoiceUnavailable
+
+    phrase = acks.pick(text)
+    if not phrase:
+        return Response(status_code=204)
+    try:
+        wav = await run_in_threadpool(acks.audio, phrase)
+    except VoiceUnavailable as e:
+        raise HTTPException(503, str(e)) from e
+    return Response(wav, media_type="audio/wav", headers={"X-Ack-Text": phrase})
 
 
 # ======================================================== native chat

@@ -99,6 +99,10 @@ Then double-click **AMO Listen.command** in the AMO folder (or run `amo listen`)
 - "**Good morning AMO**" reads your morning brief · "**what time is it**" · "**go to sleep**" /
   "**Hey AMO, wake up**" · "**never mind**".
 
+While it works on an answer, AMO says a quick line — "Okay, let me think." for questions,
+"Got it." / "I'll work on that now." for tasks. Change them in `.env` (`AMO_ACK_THINK`,
+`AMO_ACK_ACTION`, phrases separated by `|`) or turn them off with `AMO_ACKS=0`.
+
 Start it at login: System Settings → General → Login Items → **+** → `AMO Listen.command`.
 Tuning: `amo listen -v` prints what it hears. If it wakes too easily set `AMO_WAKE_SENSITIVITY=5`
 in `.env`; if it misses you, `2`. If Whisper keeps spelling the name differently, add it:

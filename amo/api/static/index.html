@@ -135,6 +135,8 @@ let player = null;
 function stopSpeaking() { if (player) { player.pause(); player = null; } try { speechSynthesis.cancel(); } catch {} }
 async function speak(text) {
   if (!speakOn || !text) return;
+  // Let a short "Got it" finish instead of cutting it off mid-word.
+  if (player && !player.paused) await new Promise(res => { player.onended = res; setTimeout(res, 2500); });
   stopSpeaking();
   try {
     const r = await fetch("/v1/audio/speech", {method: "POST", headers: {"Content-Type": "application/json", ...(key ? {Authorization: "Bearer " + key} : {})}, body: JSON.stringify({input: text})});
@@ -146,9 +148,22 @@ async function speak(text) {
   }
 }
 
+// "Got it" / "Okay, let me think" — played while AMO works on the real answer.
+async function acknowledge(message) {
+  if (!speakOn) return;
+  try {
+    const r = await fetch("/api/ack?text=" + encodeURIComponent(message), {headers: key ? {Authorization: "Bearer " + key} : {}});
+    if (r.status !== 200) return;
+    stopSpeaking();
+    player = new Audio(URL.createObjectURL(await r.blob()));
+    await player.play();
+  } catch {}
+}
+
 async function send(message, channel) {
   addMsg("you", message);
   const pending = addMsg("amo", "…");
+  if (channel === "voice") acknowledge(message);
   try {
     const r = await api("/api/ask", {method: "POST", body: JSON.stringify({message, history: history.slice(-10), channel})});
     history.push({role: "user", content: message}, {role: "assistant", content: r.content});

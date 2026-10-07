@@ -73,7 +73,22 @@ def run(speak: bool = True) -> None:
             continue
         print(f"you: {text}")
         history.append({"role": "user", "content": text})
-        reply = agent.chat(history[-12:], channel="voice")["content"]
+        import threading
+
+        from . import acks
+
+        result: dict = {}
+        worker = threading.Thread(
+            target=lambda: result.update(reply=agent.chat(history[-12:], channel="voice")["content"]))
+        worker.start()
+        phrase = acks.pick(text) if speak else None
+        if phrase:
+            try:
+                play_wav(acks.audio(phrase))
+            except Exception:  # noqa: BLE001 — acks are optional
+                pass
+        worker.join()
+        reply = result.get("reply", "")
         history.append({"role": "assistant", "content": reply})
         print(f"amo: {reply}")
         if speak and reply:

@@ -124,3 +124,53 @@ def test_mic_segmenter_splits_speech_from_silence(monkeypatch):
         pass
     assert len(segs) == 1  # the tap is ignored
     assert 1.5 <= len(segs[0]) / listen.SAMPLE_RATE <= 2.6
+
+
+def test_ack_phrases_fit_the_request(monkeypatch):
+    from amo.config import settings
+    from amo.voice import acks
+
+    assert acks.kind_of("what's on my schedule today") == "think"
+    assert acks.kind_of("how much did I make this month?") == "think"
+    assert acks.kind_of("book Jay Friday at 7") == "action"
+    assert acks.kind_of("I sold the Jordans for 320") == "action"
+    assert acks.pick("book jay friday") in acks.phrases("action")
+    picks = [acks.pick("what's up today?") for _ in range(20)]
+    assert all(a != b for a, b in zip(picks, picks[1:]))  # never the same twice in a row
+    monkeypatch.setattr(settings, "acks", False)
+    assert acks.pick("book jay") is None
+
+
+def test_ack_plays_while_model_works():
+    import threading
+    import time
+
+    events = []
+    started = threading.Event()
+
+    def slow_ask(history):
+        started.set()
+        time.sleep(0.2)
+        events.append("answer ready")
+        return "Booked."
+
+    def ack(request):
+        assert started.wait(1), "model should already be working when the ack plays"
+        events.append(f"ack for {request}")
+
+    lst = Listener(segments=lambda t: iter(()), transcribe_wake=str, transcribe_command=str,
+                   ask=slow_ask, say=lambda t: events.append(f"say {t}"), ack=ack, log=lambda *_: None)
+    lst.handle("book jay friday")
+    assert events == ["ack for book jay friday", "answer ready", "say Booked."]
+
+
+def test_listener_survives_model_errors():
+    said = []
+
+    def boom(history):
+        raise RuntimeError("Ollama isn't running")
+
+    lst = Listener(segments=lambda t: iter(()), transcribe_wake=str, transcribe_command=str,
+                   ask=boom, say=said.append, log=lambda *_: None)
+    assert lst.handle("book jay") is False
+    assert said and said[0].startswith("Sorry")

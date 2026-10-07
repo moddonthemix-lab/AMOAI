@@ -17,6 +17,7 @@ Built-in commands (instant, no AI model): "good morning" (morning brief), "what 
 from __future__ import annotations
 
 import re
+import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -107,6 +108,7 @@ class Listener:
     ask: Callable[[list[dict[str, str]]], str]          # history → reply text
     say: Callable[[str], None]
     chime: Callable[[], None] = lambda: None
+    ack: Callable[[str], None] = lambda request: None  # "Got it" while the model works
     log: Callable[[str], None] = print
     verbose: bool = False
     follow_up_seconds: float = 7.0
@@ -148,7 +150,24 @@ class Listener:
 
         self.history.append({"role": "user", "content": command})
         self.log("   … thinking")
-        reply = self.ask(self.history[-10:])
+        # Ask the model in the background and say "Got it" / "Let me think" meanwhile.
+        result: dict[str, Any] = {}
+
+        def work() -> None:
+            try:
+                result["reply"] = self.ask(self.history[-10:])
+            except Exception as e:  # noqa: BLE001 — report instead of killing the listener
+                result["error"] = e
+
+        worker = threading.Thread(target=work, daemon=True)
+        worker.start()
+        self.ack(command)
+        worker.join()
+        if "error" in result:
+            self.log(f"   ✗ {result['error']}")
+            self.say("Sorry, I couldn't do that. Check the AMO window for details.")
+            return False
+        reply = result["reply"]
         self.history.append({"role": "assistant", "content": reply})
         self.log(f"AMO: {reply}")
         self.say(reply)
@@ -294,6 +313,7 @@ def chime_wav() -> bytes:
 
 def run(verbose: bool = False) -> None:
     from ..agent import Agent
+    from . import acks
     from .loop import play_wav
     from .stt import VoiceUnavailable, transcribe_array
     from .tts import synthesize
@@ -315,6 +335,16 @@ def run(verbose: bool = False) -> None:
         play_wav(chime)
         mic.flush()
 
+    def ack(request: str) -> None:
+        phrase = acks.pick(request)
+        if phrase:
+            try:
+                play_wav(acks.audio(phrase))
+            except Exception:  # noqa: BLE001 — acks are optional
+                pass
+
+    threading.Thread(target=acks.prewarm, daemon=True).start()
+
     print("Loading speech models …")
     transcribe_array(mic.np.zeros(SAMPLE_RATE // 2, dtype="float32"), model=settings.wake_model)
     listener = Listener(
@@ -324,6 +354,7 @@ def run(verbose: bool = False) -> None:
         ask=lambda history: agent.chat(history, channel="voice")["content"],
         say=say,
         chime=ding,
+        ack=ack,
         verbose=verbose,
     )
     if verbose:

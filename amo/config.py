@@ -64,6 +64,13 @@ class Settings:
     # Empty = whatever suits the voice preset (AMO's own voice → computer).
     personality: str = field(default_factory=lambda: _env("AMO_PERSONALITY", ""))
 
+    # Spoken acknowledgements while AMO thinks (phrases separated by |).
+    acks: bool = field(default_factory=lambda: _env("AMO_ACKS", "1") not in ("0", "false", "no"))
+    ack_think: str = field(default_factory=lambda: _env(
+        "AMO_ACK_THINK", "Okay, let me think.|Let me think.|One moment."))
+    ack_action: str = field(default_factory=lambda: _env(
+        "AMO_ACK_ACTION", "Got it.|I'll work on that now.|On it."))
+
     # Wake word ("Hey AMO"): a tiny Whisper model checks short bursts of speech for the phrase.
     wake_model: str = field(default_factory=lambda: _env("AMO_WAKE_MODEL", "tiny.en"))
     # Extra spellings Whisper might hear for "AMO", comma-separated (e.g. "amore,emu").
