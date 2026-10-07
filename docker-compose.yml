@@ -1,8 +1,8 @@
 # Phase 1: everything on your desktop PC.
-#   cp .env.example .env   (set MODD_API_KEY, MODD_OWNER_NAME)
+#   cp .env.example .env   (set AMO_API_KEY, AMO_OWNER_NAME)
 #   docker compose up -d
 #   ./scripts/pull-models.sh
-# Open WebUI → http://localhost:3000   Modd dashboard → http://localhost:8765
+# Open WebUI → http://localhost:3000   AMO dashboard → http://localhost:8765
 
 services:
   ollama:
@@ -21,13 +21,13 @@ services:
     #           count: all
     #           capabilities: [gpu]
 
-  modd:
+  amo:
     build: .
     restart: unless-stopped
     env_file: .env
     environment:
       OLLAMA_URL: http://ollama:11434
-      MODD_DB_PATH: /data/modd.db
+      AMO_DB_PATH: /data/amo.db
     volumes:
       - ./data:/data
       - ./models:/models
@@ -46,25 +46,25 @@ services:
     environment:
       # Raw Ollama models (still available for plain chat)
       OLLAMA_BASE_URL: http://ollama:11434
-      # Modd shows up as the "modd" model — this is the one with memory + your business tools.
-      OPENAI_API_BASE_URLS: http://modd:8765/v1
-      OPENAI_API_KEYS: ${MODD_API_KEY}
-      DEFAULT_MODELS: modd
-      # Voice: Open WebUI's mic + read-aloud go through Modd's local Whisper and Piper.
+      # AMO shows up as the "amo" model — this is the one with memory + your business tools.
+      OPENAI_API_BASE_URLS: http://amo:8765/v1
+      OPENAI_API_KEYS: ${AMO_API_KEY}
+      DEFAULT_MODELS: amo
+      # Voice: Open WebUI's mic + read-aloud go through AMO's local Whisper and Piper.
       AUDIO_STT_ENGINE: openai
-      AUDIO_STT_OPENAI_API_BASE_URL: http://modd:8765/v1
-      AUDIO_STT_OPENAI_API_KEY: ${MODD_API_KEY}
+      AUDIO_STT_OPENAI_API_BASE_URL: http://amo:8765/v1
+      AUDIO_STT_OPENAI_API_KEY: ${AMO_API_KEY}
       AUDIO_STT_MODEL: whisper-1
       AUDIO_TTS_ENGINE: openai
-      AUDIO_TTS_OPENAI_API_BASE_URL: http://modd:8765/v1
-      AUDIO_TTS_OPENAI_API_KEY: ${MODD_API_KEY}
+      AUDIO_TTS_OPENAI_API_BASE_URL: http://amo:8765/v1
+      AUDIO_TTS_OPENAI_API_KEY: ${AMO_API_KEY}
       AUDIO_TTS_MODEL: piper
       AUDIO_TTS_VOICE: default
       # Keep it private: no telemetry, single local user.
       ANONYMIZED_TELEMETRY: "false"
       ENABLE_SIGNUP: "true"
     depends_on:
-      - modd
+      - amo
 
 volumes:
   ollama:

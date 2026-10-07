@@ -1,5 +1,5 @@
-# About me — starter memories for Modd
-# Copy to about-me.md, edit, then run:  modd import docs/about-me.md
+# About me — starter memories for AMO
+# Copy to about-me.md, edit, then run:  amo import docs/about-me.md
 # One fact per line. Lines starting with # are ignored.
 
 - My name is Modd and I run a recording studio, Cravvr, a reselling operation, and I trade.

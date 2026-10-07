@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "modd"
+name = "amo"
 version = "0.1.0"
-description = "Modd: a local-first personal AI operating system (Ollama + Open WebUI + SQLite + Whisper + Piper)"
+description = "AMO: a local-first personal AI operating system (Ollama + Open WebUI + SQLite + Whisper + Piper)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -28,13 +28,13 @@ postgres = ["psycopg[binary]>=3.1"]
 dev = ["pytest>=8"]
 
 [project.scripts]
-modd = "modd.cli:main"
+amo = "amo.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["modd*"]
+include = ["amo*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-modd = ["api/static/*"]
+amo = ["api/static/*"]

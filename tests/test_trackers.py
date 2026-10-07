@@ -2,12 +2,12 @@ from datetime import timedelta
 
 import pytest
 
-from modd.crm import StudioCRM
-from modd.db import today
-from modd.finance import Finance, dashboard
-from modd.goals import Goals
-from modd.reselling import Reselling
-from modd.trading import TradingJournal
+from amo.crm import StudioCRM
+from amo.db import today
+from amo.finance import Finance, dashboard
+from amo.goals import Goals
+from amo.reselling import Reselling
+from amo.trading import TradingJournal
 
 
 def test_crm_booking_payment_balance(db):

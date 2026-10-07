@@ -115,7 +115,7 @@ class Scheduler:
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
-        self._thread = threading.Thread(target=self._run, name="modd-scheduler", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="amo-scheduler", daemon=True)
         self._thread.start()
 
     def stop(self) -> None:

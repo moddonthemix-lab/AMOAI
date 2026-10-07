@@ -1,4 +1,4 @@
-"""Long-term memory: facts Modd knows about you and your businesses.
+"""Long-term memory: facts AMO knows about you and your businesses.
 
 Search is hybrid: SQLite FTS5 keyword ranking, boosted by embedding cosine
 similarity when an Ollama embedding model is available, plus importance and

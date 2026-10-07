@@ -1,7 +1,7 @@
-"""Desktop voice mode: press Enter, talk, Modd answers out loud.
+"""Desktop voice mode: press Enter, talk, AMO answers out loud.
 
 Recording stops automatically after ~1s of silence. (Phase 2 swaps the Enter key
-for a "Hey Modd" wake word on the Raspberry Pi — the rest of this loop stays the same.)
+for a "Hey AMO" wake word on the Raspberry Pi — the rest of this loop stays the same.)
 """
 
 from __future__ import annotations
@@ -75,6 +75,6 @@ def run(speak: bool = True) -> None:
         history.append({"role": "user", "content": text})
         reply = agent.chat(history[-12:], channel="voice")["content"]
         history.append({"role": "assistant", "content": reply})
-        print(f"modd: {reply}")
+        print(f"amo: {reply}")
         if speak and reply:
             play_wav(synthesize(reply))

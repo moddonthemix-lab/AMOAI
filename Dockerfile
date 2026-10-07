@@ -6,13 +6,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl \
 
 WORKDIR /app
 COPY pyproject.toml README.md ./
-COPY modd ./modd
+COPY amo ./amo
 RUN pip install --no-cache-dir faster-whisper piper-tts && pip install --no-cache-dir -e .
 
-ENV MODD_DB_PATH=/data/modd.db \
-    MODD_PIPER_VOICE=/models/piper/en_US-lessac-medium.onnx \
+ENV AMO_DB_PATH=/data/amo.db \
+    AMO_PIPER_VOICE=/models/piper/en_US-lessac-medium.onnx \
     HF_HOME=/models/hf
 VOLUME ["/data", "/models"]
 EXPOSE 8765
 HEALTHCHECK CMD curl -fs http://localhost:8765/api/health || exit 1
-CMD ["sh", "-c", "[ -f \"$MODD_PIPER_VOICE\" ] || modd setup-voice; modd serve --port 8765"]
+CMD ["sh", "-c", "[ -f \"$AMO_PIPER_VOICE\" ] || amo setup-voice; amo serve --port 8765"]

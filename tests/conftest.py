@@ -1,13 +1,13 @@
 import os
 
-os.environ["MODD_ENV_FILE"] = "/nonexistent"
-os.environ["MODD_API_KEY"] = ""
-os.environ["MODD_AUTO_LEARN"] = "0"
+os.environ["AMO_ENV_FILE"] = "/nonexistent"
+os.environ["AMO_API_KEY"] = ""
+os.environ["AMO_AUTO_LEARN"] = "0"
 
 import pytest  # noqa: E402
 
-from modd.db import Database, set_db  # noqa: E402
-from modd.llm import set_llm  # noqa: E402
+from amo.db import Database, set_db  # noqa: E402
+from amo.llm import set_llm  # noqa: E402
 
 
 class FakeLLM:

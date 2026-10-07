@@ -1,4 +1,4 @@
-"""How Modd gets more useful every week.
+"""How AMO gets more useful every week.
 
 1. Fact extraction (after conversations): a small local model reads new,
    unprocessed messages and pulls out durable facts — people, prices,

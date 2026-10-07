@@ -2,11 +2,11 @@ import json
 
 from conftest import tool_call
 
-from modd import tools
-from modd.agent import Agent
-from modd.crm import StudioCRM
-from modd.learning import learn_from_conversations, weekly_reflection
-from modd.memory import Memory
+from amo import tools
+from amo.agent import Agent
+from amo.crm import StudioCRM
+from amo.learning import learn_from_conversations, weekly_reflection
+from amo.memory import Memory
 
 
 def test_memory_search_and_dedupe(db, llm):

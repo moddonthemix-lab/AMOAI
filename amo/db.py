@@ -1,4 +1,4 @@
-"""SQLite storage: one file holds Modd's entire memory and business data.
+"""SQLite storage: one file holds AMO's entire memory and business data.
 
 Migrations are a simple ordered list; each runs once and is recorded in
 `schema_version`. Add new migrations to the end, never edit old ones.
@@ -195,7 +195,7 @@ MIGRATIONS: list[str] = [
 def local_now() -> datetime:
     """Current wall-clock time in the owner's timezone (naive).
 
-    Modd is single-user, so every timestamp is stored as local naive ISO-8601
+    AMO is single-user, so every timestamp is stored as local naive ISO-8601
     ("2026-10-07T14:30:00"). That keeps "today" / "this week" queries trivial.
     """
     try:

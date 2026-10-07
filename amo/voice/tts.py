@@ -2,7 +2,7 @@
 
 Download a voice (an .onnx file plus its .onnx.json) into ./models/piper/, e.g.
 en_US-lessac-medium from https://huggingface.co/rhasspy/piper-voices — or run
-`modd setup-voice`.
+`amo setup-voice`.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def _load_voice():
         if _voice is None:
             if not Path(settings.piper_voice).is_file():
                 raise VoiceUnavailable(
-                    f"Piper voice not found at {settings.piper_voice}. Run `modd setup-voice`."
+                    f"Piper voice not found at {settings.piper_voice}. Run `amo setup-voice`."
                 )
             try:
                 from piper import PiperVoice

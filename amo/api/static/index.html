@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Modd Dashboard</title>
+<title>AMO Dashboard</title>
 <style>
   :root { --bg:#f6f6f4; --card:#fff; --ink:#1b1b1b; --mut:#6b6b6b; --line:#e4e4e0; --acc:#2f6fed; --good:#1f9d55; --bad:#d64545; }
   @media (prefers-color-scheme: dark) { :root { --bg:#111214; --card:#1a1c1f; --ink:#ececec; --mut:#9a9a9a; --line:#2a2d31; --acc:#6c9bff; --good:#3ecf7a; --bad:#ff6b6b; } }
@@ -30,12 +30,12 @@
 </head>
 <body>
 <header>
-  <h1 id="title">Modd</h1>
+  <h1 id="title">AMO</h1>
   <span class="mut" id="date"></span>
 </header>
 <main>
   <section class="card wide">
-    <form class="ask" id="ask"><input id="q" placeholder="Ask Modd or tell it something… (e.g. “book Jay Friday 7pm, 3 hours at $50”)" autocomplete="off"><button>Send</button></form>
+    <form class="ask" id="ask"><input id="q" placeholder="Ask AMO or tell it something… (e.g. “book Jay Friday 7pm, 3 hours at $50”)" autocomplete="off"><button>Send</button></form>
     <div id="answer" class="mut"></div>
   </section>
   <section class="card"><h2>Revenue · month</h2><div class="big" id="rev-month">–</div>
@@ -51,13 +51,13 @@
 const $ = id => document.getElementById(id);
 const money = n => (n < 0 ? "-$" : "$") + Math.abs(n || 0).toLocaleString(undefined, {maximumFractionDigits: 0});
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-let key = ""; try { key = localStorage.getItem("modd_key") || ""; } catch {}
+let key = ""; try { key = localStorage.getItem("amo_key") || ""; } catch {}
 
 async function api(path, opts = {}) {
   const r = await fetch(path, {...opts, headers: {"Content-Type": "application/json", ...(key ? {Authorization: "Bearer " + key} : {})}});
   if (r.status === 401) {
-    key = prompt("Modd API key (MODD_API_KEY):") || "";
-    try { localStorage.setItem("modd_key", key); } catch {}
+    key = prompt("AMO API key (AMO_API_KEY):") || "";
+    try { localStorage.setItem("amo_key", key); } catch {}
     return api(path, opts);
   }
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
@@ -78,7 +78,7 @@ async function load() {
   $("rev-biz").innerHTML = Object.entries(rv.by_business).map(([k, v]) => row(k, money(v), sign(v))).join("");
   $("studio").innerHTML = (d.studio.today.length ? d.studio.today.map(s => row(`${s.time} ${esc(s.client)}`, `${esc(s.service)} · ${s.hours}h`)).join("") : `<div class="mut">No sessions today</div>`)
     + row("Next 7 days", d.studio.upcoming_7d) + row("Unpaid sessions", d.studio.unpaid, d.studio.unpaid ? "neg" : "");
-  $("goals").innerHTML = d.goals.length ? d.goals.map(g => `<div class="row chk" data-id="${g.id}"><span>${g.done ? "✅" : "⬜️"} ${esc(g.title)}</span><span class="mut">🔥 ${g.streak}</span></div>`).join("") : `<div class="mut">No daily goals yet — tell Modd “add a daily goal: …”</div>`;
+  $("goals").innerHTML = d.goals.length ? d.goals.map(g => `<div class="row chk" data-id="${g.id}"><span>${g.done ? "✅" : "⬜️"} ${esc(g.title)}</span><span class="mut">🔥 ${g.streak}</span></div>`).join("") : `<div class="mut">No daily goals yet — tell AMO “add a daily goal: …”</div>`;
   document.querySelectorAll(".chk").forEach(el => el.onclick = async () => { await api(`/api/goals/${el.dataset.id}/checkin`, {method: "POST", body: "{}"}); load(); });
   $("trading").innerHTML = row("Today P&L", money(d.trading.today_pnl), sign(d.trading.today_pnl)) + row("Week P&L", money(d.trading.week), sign(d.trading.week)) + row("Open positions", d.trading.open_positions);
   $("resale").innerHTML = row("Items in inventory", d.reselling.inventory) + row("Stale (30+ days)", d.reselling.stale, d.reselling.stale ? "neg" : "") + row("Cravvr open tasks", d.cravvr.open_tasks);

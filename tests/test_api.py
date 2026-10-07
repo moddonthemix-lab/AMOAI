@@ -1,8 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from modd.api.main import app
-from modd.scheduler import morning_brief_text, tick
+from amo.api.main import app
+from amo.scheduler import morning_brief_text, tick
 
 
 @pytest.fixture()
@@ -13,9 +13,9 @@ def client(db, llm):
 
 
 def test_openai_compat_chat(client, llm):
-    assert client.get("/v1/models").json()["data"][0]["id"] == "modd"
+    assert client.get("/v1/models").json()["data"][0]["id"] == "amo"
     llm.script({"role": "assistant", "content": "Hey, what's up?"})
-    r = client.post("/v1/chat/completions", json={"model": "modd", "messages": [{"role": "user", "content": "yo"}]})
+    r = client.post("/v1/chat/completions", json={"model": "amo", "messages": [{"role": "user", "content": "yo"}]})
     assert r.json()["choices"][0]["message"]["content"] == "Hey, what's up?"
 
     llm.script({"role": "assistant", "content": "one two three four five six"})
@@ -49,7 +49,7 @@ def test_rest_flow(client):
 def test_scheduler_brief_and_reminders(db, llm):
     from datetime import datetime, timedelta
 
-    from modd.crm import StudioCRM
+    from amo.crm import StudioCRM
 
     crm = StudioCRM(db)
     crm.add_client("Jay", phone="555-1")

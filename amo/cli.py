@@ -1,16 +1,16 @@
-"""`modd` command line.
+"""`amo` command line.
 
-  modd doctor              check Ollama, models, voice, database
-  modd serve               run the API + dashboard + scheduler (Open WebUI connects here)
-  modd chat                chat in the terminal
-  modd voice               push-to-talk voice mode (Whisper + Piper)
-  modd setup-voice         download the default Piper voice
-  modd remember "fact"     save a memory
-  modd memories [query]    list or search memories
-  modd import FILE         import facts (one per line / bullet) from a text or markdown file
-  modd brief               print today's brief
-  modd learn               extract facts from recent conversations now
-  modd reflect             run the weekly reflection now
+  amo doctor              check Ollama, models, voice, database
+  amo serve               run the API + dashboard + scheduler (Open WebUI connects here)
+  amo chat                chat in the terminal
+  amo voice               push-to-talk voice mode (Whisper + Piper)
+  amo setup-voice         download the default Piper voice
+  amo remember "fact"     save a memory
+  amo memories [query]    list or search memories
+  amo import FILE         import facts (one per line / bullet) from a text or markdown file
+  amo brief               print today's brief
+  amo learn               extract facts from recent conversations now
+  amo reflect             run the weekly reflection now
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ PIPER_VOICE_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/
 def cmd_serve(a):
     import uvicorn
 
-    uvicorn.run("modd.api.main:app", host=a.host, port=a.port, log_level="info")
+    uvicorn.run("amo.api.main:app", host=a.host, port=a.port, log_level="info")
 
 
 def cmd_doctor(_a):
@@ -61,8 +61,8 @@ def cmd_doctor(_a):
     except ImportError:
         print('Whisper (STT)   – not installed (optional): pip install -e ".[voice]"')
     voice = Path(settings.piper_voice)
-    print(f"Piper (TTS)     {'✓ ' + voice.name if voice.is_file() else '– no voice yet: modd setup-voice'}")
-    print(f"API key         {'✓ set' if settings.api_key and settings.api_key != 'change-me' else '⚠ set MODD_API_KEY in .env'}")
+    print(f"Piper (TTS)     {'✓ ' + voice.name if voice.is_file() else '– no voice yet: amo setup-voice'}")
+    print(f"API key         {'✓ set' if settings.api_key and settings.api_key != 'change-me' else '⚠ set AMO_API_KEY in .env'}")
     sys.exit(0 if ok else 1)
 
 
@@ -171,7 +171,7 @@ def cmd_reflect(_a):
 
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
-    p = argparse.ArgumentParser(prog="modd", description="Modd — your local personal AI OS")
+    p = argparse.ArgumentParser(prog="amo", description="AMO — your local personal AI OS")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("serve", help="run the API, dashboard and scheduler")

@@ -1,12 +1,12 @@
-"""Modd API server.
+"""AMO API server.
 
-- OpenAI-compatible endpoints so Open WebUI (and anything else) can use Modd
+- OpenAI-compatible endpoints so Open WebUI (and anything else) can use AMO
   as a model, with voice: /v1/models, /v1/chat/completions,
   /v1/audio/transcriptions (Whisper), /v1/audio/speech (Piper)
 - REST endpoints for every tracker (/api/...)
 - A built-in dashboard at /
 
-Run: modd serve   (or: uvicorn modd.api.main:app --host 0.0.0.0 --port 8765)
+Run: amo serve   (or: uvicorn amo.api.main:app --host 0.0.0.0 --port 8765)
 """
 
 from __future__ import annotations
@@ -38,9 +38,9 @@ from ..notify import mark_read
 from ..reselling import Reselling
 from ..trading import TradingJournal
 
-log = logging.getLogger("modd")
+log = logging.getLogger("amo")
 STATIC = Path(__file__).parent / "static"
-MODEL_ID = "modd"
+MODEL_ID = "amo"
 
 
 @asynccontextmanager
@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
         scheduler.stop()
 
 
-app = FastAPI(title="Modd", version=__version__, lifespan=lifespan)
+app = FastAPI(title="AMO", version=__version__, lifespan=lifespan)
 
 
 def auth(authorization: Optional[str] = Header(default=None)) -> None:
