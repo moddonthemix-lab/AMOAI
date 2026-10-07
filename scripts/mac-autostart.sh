@@ -8,6 +8,8 @@ AGENTS="$HOME/Library/LaunchAgents"
 LOGS="$ROOT/data/logs"
 AMO_LABEL="com.amo.server"
 WEBUI_LABEL="com.amo.openwebui"
+OLLAMA_LABEL="com.amo.ollama"
+OLLAMA_APP_BIN="/Applications/Ollama.app/Contents/Resources/ollama"
 
 env_val() { grep -E "^$1=" "$ROOT/.env" 2>/dev/null | tail -1 | cut -d= -f2- ; }
 
@@ -40,6 +42,15 @@ case "${1:-install}" in
   install)
     mkdir -p "$AGENTS" "$LOGS"
     [[ -x .venv/bin/amo ]] || { echo "Run ./scripts/setup-mac.sh first."; exit 1; }
+    # Keep Ollama running at login too — unless the Ollama menu-bar app already handles it.
+    if ! pgrep -xq Ollama; then
+      OBIN="$(command -v ollama || echo "$OLLAMA_APP_BIN")"
+      if [[ -x "$OBIN" ]]; then
+        pkill -f "ollama serve" 2>/dev/null || true   # replace any manually started server
+        sleep 1
+        plist "$OLLAMA_LABEL" "$OBIN" serve
+      fi
+    fi
     plist "$AMO_LABEL" "$ROOT/.venv/bin/amo" serve --host 127.0.0.1 --port 8765
     if [[ -x .venv-webui/bin/open-webui ]]; then
       KEY="$(env_val AMO_API_KEY)"
@@ -54,7 +65,7 @@ case "${1:-install}" in
         ANONYMIZED_TELEMETRY false
     fi ;;
   uninstall)
-    for l in "$AMO_LABEL" "$WEBUI_LABEL"; do
+    for l in "$AMO_LABEL" "$WEBUI_LABEL" "$OLLAMA_LABEL"; do
       launchctl bootout "gui/$(id -u)/$l" 2>/dev/null || true
       rm -f "$AGENTS/$l.plist"
     done

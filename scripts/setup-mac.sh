@@ -26,13 +26,19 @@ if ! command -v ollama >/dev/null && [[ ! -x "$OLLAMA_APP_BIN" ]]; then
   rm -rf "$TMP"
 fi
 step "Starting Ollama"
-if [[ -d /Applications/Ollama.app ]]; then
-  open -ga Ollama
-else
-  (ollama serve >/dev/null 2>&1 &)
+ollama_up() { curl -fs http://localhost:11434/api/tags >/dev/null; }
+wait_ollama() { for _ in $(seq 1 "$1"); do ollama_up && return 0; sleep 1; done; return 1; }
+if ! ollama_up; then
+  # Open by path: a just-copied app isn't registered with macOS yet, so `open -a Ollama` fails.
+  [[ -d /Applications/Ollama.app ]] && open -g /Applications/Ollama.app 2>/dev/null || true
+  if ! wait_ollama 20; then
+    # Fall back to running the server directly (AMO's login item keeps it running later).
+    BIN="$(command -v ollama || echo "$OLLAMA_APP_BIN")"
+    mkdir -p data/logs
+    nohup "$BIN" serve >data/logs/ollama.log 2>&1 &
+    wait_ollama 30 || { echo "Ollama didn't start — see data/logs/ollama.log, or open Ollama from Applications and re-run."; exit 1; }
+  fi
 fi
-for _ in $(seq 1 60); do curl -fs http://localhost:11434/api/tags >/dev/null && break; sleep 1; done
-curl -fs http://localhost:11434/api/tags >/dev/null || { echo "Ollama didn't start. Open the Ollama app once, then re-run this script."; exit 1; }
 echo "  Ollama is running"
 
 # ---------------------------------------------------------------- uv (Python manager)
