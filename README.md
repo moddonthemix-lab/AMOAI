@@ -81,8 +81,11 @@ source .venv/bin/activate && amo import docs/about-me.md
 ```
 Or just tell it things in chat — it remembers.
 
-### Voice on the Mac
-- In Open WebUI, use the mic button and the speaker icon — both run through AMO's local Whisper/Piper.
+### Voice on the Mac (AMO talks *and* shows text)
+- **AMO dashboard** (http://localhost:8765): click 🎤, talk, click ■. Your words and AMO's reply show
+  as text, and with 🔊 on AMO reads the reply out loud. Click 🔊 to mute.
+- **Open WebUI**: click 🎤 to talk. To hear every reply while still seeing the text, go to
+  **Settings → Audio** and turn on **Auto-playback response**.
 - In Terminal: `amo voice` (press Enter, talk). The first time, macOS asks to allow microphone access
   for Terminal — say yes (System Settings → Privacy & Security → Microphone).
 - If Piper isn't available (e.g. on some Intel Macs), AMO speaks with the built-in macOS voice.
@@ -97,8 +100,13 @@ Or just tell it things in chat — it remembers.
 | Apple Silicon 32 GB | `qwen2.5:14b` |
 | Apple Silicon 64 GB+ | `qwen2.5:32b` |
 
-The model must support tool calling (Llama 3.1+, Qwen 2.5+, Mistral Nemo all do). After changing it,
-run `ollama pull <model>` and restart AMO (`./scripts/mac-autostart.sh install`).
+Compare models on your own Mac, then switch in one command:
+```sh
+amo bench llama3.2:3b gemma4:e2b qwen3:4b   # times each one and checks it really saves a booking
+amo use gemma4:e2b                           # downloads it, saves it to .env, restarts AMO
+```
+
+The model must support tool calling (Gemma 3 doesn't; Gemma 4 does) — Llama 3.1+, Qwen 2.5+/3, Gemma 4 and Mistral Nemo all do.
 
 ---
 
