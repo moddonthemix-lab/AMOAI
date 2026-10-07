@@ -220,6 +220,7 @@ def cmd_bench(a):
 
 SAMPLE_LINES = {
     "computer": "Good evening. I've reviewed your schedule. It's about as organised as I expected.",
+    "obadiah": "Good evening. I've reviewed your schedule. It's about as organised as I expected.",
     "jarvis": "Good evening. Your studio is booked at seven, and revenue is up twelve percent this week.",
     "british-female": "Good evening. You have two sessions today and one item ready to list.",
     "default": "Hey, I'm AMO. You have two sessions today and one item ready to list.",

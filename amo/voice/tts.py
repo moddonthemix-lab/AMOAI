@@ -2,7 +2,8 @@
 macOS voices, plus optional pitch and "robot" effects.
 
 Presets (AMO_VOICE):
-  computer        dry, posh British computer — lower pitch, metallic edge
+  computer        Obadiah: deadpan British computer — slightly deeper, metallic edge
+  obadiah         Obadiah with a light robotic touch
   jarvis          calm British butler with a light digital polish
   british-female  British female voice
   default         neutral American voice
@@ -43,8 +44,11 @@ class VoiceStyle:
 
 
 PRESETS: dict[str, VoiceStyle] = {
-    "computer": VoiceStyle("en_GB-alan-medium", ("Daniel", "Oliver", "Arthur"),
-                           rate=0.96, pitch=-1.5, robot=0.32, personality="computer"),
+    # Obadiah (Piper "semaine" voice): deadpan British male — the sarcastic computer.
+    "computer": VoiceStyle("en_GB-semaine-medium:obadiah", ("Daniel", "Oliver", "Arthur"),
+                           rate=1.0, pitch=-1.0, robot=0.32, personality="computer"),
+    "obadiah": VoiceStyle("en_GB-semaine-medium:obadiah", ("Daniel", "Oliver", "Arthur"),
+                          rate=1.0, pitch=0.0, robot=0.15, personality="computer"),
     "jarvis": VoiceStyle("en_GB-alan-medium", ("Daniel", "Oliver", "Arthur"),
                          rate=1.0, pitch=-0.5, robot=0.12, personality="jarvis"),
     "british-female": VoiceStyle("en_GB-jenny_dioco-medium", ("Kate", "Serena", "Stephanie", "Martha", "Daniel"),
