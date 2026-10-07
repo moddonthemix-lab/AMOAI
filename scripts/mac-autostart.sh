@@ -69,7 +69,9 @@ case "${1:-install}" in
         AUDIO_STT_OPENAI_API_KEY "$KEY" AUDIO_STT_MODEL whisper-1 \
         AUDIO_TTS_ENGINE openai AUDIO_TTS_OPENAI_API_BASE_URL http://localhost:8765/v1 \
         AUDIO_TTS_OPENAI_API_KEY "$KEY" AUDIO_TTS_MODEL piper AUDIO_TTS_VOICE default \
-        ANONYMIZED_TELEMETRY false
+        ANONYMIZED_TELEMETRY false \
+        ENABLE_TITLE_GENERATION false ENABLE_TAGS_GENERATION false \
+        ENABLE_FOLLOW_UP_GENERATION false ENABLE_AUTOCOMPLETE_GENERATION false
     fi ;;
   uninstall)
     for l in "$AMO_LABEL" "$WEBUI_LABEL" "$OLLAMA_LABEL"; do

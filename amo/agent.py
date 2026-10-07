@@ -10,6 +10,7 @@ from typing import Any
 
 from . import tools
 from .config import settings
+from .confirm import instant_reply
 from .db import Database, get_db, local_now, now_iso
 from .llm import LLMError, get_llm
 from .memory import Memory
@@ -115,20 +116,29 @@ class Agent:
                 content = msg.get("content", "")
                 break
             convo.append({"role": "assistant", "content": msg.get("content", ""), "tool_calls": calls})
+            round_trace: list[dict[str, Any]] = []
             for c in calls:
                 fn = c.get("function", {})
                 name, args = fn.get("name", ""), fn.get("arguments", {})
                 result = tools.call(name, args)
                 log.info("tool %s(%s) -> %s", name, args, result[:200])
-                trace.append({"name": name, "arguments": args, "result": json.loads(result)})
+                round_trace.append({"name": name, "arguments": args, "result": json.loads(result)})
                 convo.append({"role": "tool", "content": result, "tool_name": name})
+            trace += round_trace
+            # Pure saves (booking, logging a trade…) don't need a second model pass to confirm.
+            quick = instant_reply(round_trace)
+            if quick:
+                content = quick
+                break
         else:
             # Ran out of tool rounds: ask for a final answer without tools.
             content = llm.chat(convo + [{"role": "user", "content": "Summarize what you did."}],
                                model=model).get("content", "")
 
         self._log(channel, user_text, content)
-        if learn if learn is not None else settings.auto_learn:
+        # Fact learning normally runs from the scheduler once you've gone quiet, so it never
+        # competes with your next message for the CPU. learn=True forces it now (in background).
+        if learn:
             threading.Thread(target=self._learn_safely, daemon=True).start()
         return {"content": content, "tool_calls": trace}
 

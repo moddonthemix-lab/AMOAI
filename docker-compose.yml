@@ -58,6 +58,12 @@ services:
       AUDIO_TTS_VOICE: default
       # Keep it private: no telemetry, single local user.
       ANONYMIZED_TELEMETRY: "false"
+      # Skip the extra AI calls Open WebUI makes after every reply (titles, tags, follow-ups):
+      # on a CPU-only Mac they slow down your next message.
+      ENABLE_TITLE_GENERATION: "false"
+      ENABLE_TAGS_GENERATION: "false"
+      ENABLE_FOLLOW_UP_GENERATION: "false"
+      ENABLE_AUTOCOMPLETE_GENERATION: "false"
       ENABLE_SIGNUP: "true"
     depends_on:
       - amo

@@ -2,7 +2,7 @@
 
 - every minute: studio session reminders (2h before)
 - 08:00 daily: morning brief notification
-- hourly: catch-up fact learning
+- after 5 quiet minutes: learn facts from new conversations
 - Sunday 20:00: weekly reflection (the "gets smarter every week" loop)
 """
 
@@ -12,6 +12,7 @@ import logging
 import threading
 from datetime import datetime, timedelta
 
+from .config import settings
 from .crm import StudioCRM
 from .db import Database, get_db, local_now
 from .finance import dashboard
@@ -22,6 +23,7 @@ from .notify import notify
 log = logging.getLogger(__name__)
 
 REMINDER_LEAD = timedelta(hours=2)
+LEARN_IDLE = timedelta(minutes=5)
 BRIEF_HOUR = 8
 REFLECTION_WEEKDAY, REFLECTION_HOUR = 6, 20  # Sunday 8pm
 
@@ -85,9 +87,11 @@ def tick(db: Database, now: datetime | None = None) -> list[str]:
         db.set_kv("last_brief", today)
         ran.append("brief")
 
-    hour_key = now.strftime("%Y-%m-%dT%H")
-    if db.get_kv("last_learn") != hour_key:
-        db.set_kv("last_learn", hour_key)
+    # Learn from new conversations once you've been quiet for a few minutes,
+    # so learning never slows down a conversation in progress.
+    pending = db.scalar("SELECT COUNT(*) FROM conversations WHERE learned = 0 AND role = 'user'")
+    last_msg = db.scalar("SELECT MAX(created_at) FROM conversations")
+    if settings.auto_learn and pending and last_msg and last_msg <= (now - LEARN_IDLE).isoformat():
         try:
             learn_from_conversations(db)
             ran.append("learn")

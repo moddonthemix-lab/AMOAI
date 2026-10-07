@@ -113,3 +113,39 @@ def test_set_env(tmp_path, monkeypatch):
     _set_env("AMO_CHAT_MODEL", "gemma4:e2b")
     _set_env("AMO_THINK", "0")
     assert env.read_text() == "AMO_CHAT_MODEL=gemma4:e2b\nAMO_API_KEY=\nAMO_THINK=0\n"
+
+
+def test_saves_confirm_instantly_without_second_model_pass(db, llm):
+    StudioCRM(db).add_client("Jay Carter", artist_name="Lil Jay")
+    llm.script(tool_call("book_session", client="Lil Jay", starts_at="2030-01-04 19:00", hours=3, rate=50))
+    out = Agent(db).chat([{"role": "user", "content": "book lil jay friday 7pm 3h at 50"}])
+    assert len(llm.calls) == 1  # one model pass, not two
+    assert out["content"] == "Booked Lil Jay (Jay Carter) for Fri Jan 4 at 7 PM — 3h recording at $50/h ($150)."
+
+
+def test_questions_still_get_a_model_answer(db, llm):
+    llm.script(tool_call("revenue", period="month"), {"role": "assistant", "content": "You're at $0 this month."})
+    out = Agent(db).chat([{"role": "user", "content": "how much did I make this month"}])
+    assert len(llm.calls) == 2 and out["content"] == "You're at $0 this month."
+
+
+def test_failed_save_goes_back_to_the_model(db, llm):
+    llm.script(tool_call("book_session", client="Nobody", starts_at="2030-01-04 19:00"),
+               {"role": "assistant", "content": "I don't have a client called Nobody — who did you mean?"})
+    out = Agent(db).chat([{"role": "user", "content": "book nobody friday"}])
+    assert "who did you mean" in out["content"]
+
+
+def test_learning_waits_until_quiet(db, llm, monkeypatch):
+    from datetime import datetime, timedelta
+
+    from amo.config import settings
+    from amo.scheduler import tick
+
+    monkeypatch.setattr(settings, "auto_learn", True)
+
+    Agent(db).chat([{"role": "user", "content": "hey"}])
+    last = datetime.fromisoformat(db.scalar("SELECT MAX(created_at) FROM conversations"))
+    assert "learn" not in tick(db, last + timedelta(minutes=1))
+    llm.script({"role": "assistant", "content": '{"facts": []}'})
+    assert "learn" in tick(db, last + timedelta(minutes=6))
