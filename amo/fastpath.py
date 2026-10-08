@@ -192,6 +192,28 @@ SEND_RE = re.compile(r"^(?:yes|yeah|yep|ok(?:ay)?)?[\s,]*(?:send it|send|send th
 CANCEL_TEXT_RE = re.compile(r"^(?:no,?\s*)?(?:cancel(?: it| that| the text)?|don'?t send(?: it)?|scrap (?:it|that))[.!]*$", re.I)
 
 
+# "No, I said Thursday" / "you misheard me" / "that's not what I said — book Jay"
+_CORR_LEAD = r"(?:(?:no+|nope|wait|hold on|hang on|stop|sorry|actually|hey amo|amo)\b[ ,.!-]*)"
+CORRECTION_RE = re.compile(
+    rf"^(?:{_CORR_LEAD}*(?:that'?s not what i (?:said|meant|asked(?: for)?)|that'?s not it|you misheard(?: me)?|"
+    r"you heard (?:me )?wrong|you got (?:it|that|me) wrong|i didn'?t say(?: that)?|i meant(?! to\b))"
+    rf"|{_CORR_LEAD}+(?:i said|i asked(?: for| you)?))\b[ ,.:!-]*(?P<rest>.*)$", re.I)
+
+
+def correction(text: str) -> str | None:
+    """None if this isn't a correction; otherwise what the user actually meant ("" = not said yet)."""
+    t = text.strip()
+    m = CORRECTION_RE.match(t)
+    if not m:
+        return None
+    for _ in range(3):  # "that's not what I said, I said Thursday" → "Thursday"
+        rest = m.group("rest").strip(" ,.!?-")
+        m = CORRECTION_RE.match(rest) or re.match(r"^(?:i said|i asked(?: for)?)\b[ ,.:!-]*(?P<rest>.*)$", rest, re.I)
+        if not m:
+            break
+    return rest
+
+
 def text_reply(text: str, has_pending: bool) -> tuple[str, dict[str, Any]] | None:
     """'send it' / 'cancel' only mean something while a text draft is waiting."""
     t = _clean_sentence(text)

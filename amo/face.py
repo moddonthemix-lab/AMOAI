@@ -40,6 +40,14 @@ def publish_state(state: str, db: Database | None = None) -> None:
         pass
 
 
+def publish_heard(text: str, db: Database | None = None) -> None:
+    """What AMO understood you said — shown on the face so you can spot a mishearing."""
+    try:
+        _publish("heard", {"text": text, "at": _now_ms()}, db)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def say_event(text: str, wav: bytes, start_ms: int | None = None) -> dict[str, Any]:
     """Word timings and a loudness curve for one spoken sentence."""
     import numpy as np

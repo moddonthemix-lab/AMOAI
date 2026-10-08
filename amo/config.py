@@ -83,10 +83,10 @@ class Settings:
     quiet_hours: str = field(default_factory=lambda: _env("AMO_QUIET_HOURS", "22-8"))
     checkin_hour: int = field(default_factory=lambda: int(_env("AMO_CHECKIN_HOUR", "21")))
 
-    # Speak while thinking (voice starts on the first finished sentence). Interrupting AMO
-    # mid-answer ("AMO, stop") is off by default — AMO always finishes; AMO_BARGE_IN=1 to allow it.
+    # Speak while thinking (voice starts on the first finished sentence). You can cut AMO off when it
+    # misheard you ("No, I said Thursday", "You misheard me", "Stop") — only phrases at the start count.
     stream_speech: bool = field(default_factory=lambda: _env("AMO_STREAM_SPEECH", "1") not in ("0", "false", "no"))
-    barge_in: bool = field(default_factory=lambda: _env("AMO_BARGE_IN", "0") in ("1", "true", "yes"))
+    barge_in: bool = field(default_factory=lambda: _env("AMO_BARGE_IN", "1") in ("1", "true", "yes"))
 
     # Wake-word engine: whisper (default) | vosk (light, for a Pi) | openwakeword (lightest, trained)
     wake_engine: str = field(default_factory=lambda: _env("AMO_WAKE_ENGINE", "whisper"))

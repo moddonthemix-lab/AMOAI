@@ -12,3 +12,4 @@ models/
 *.onnx.json
 *.wav
 docs/about-me.md
+backups/

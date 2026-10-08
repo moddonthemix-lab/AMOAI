@@ -268,13 +268,49 @@ def test_barge_in_vs_echo():
     from amo.voice.listen import barge_in
 
     said = "AMZN B-grade long. Monthly reversal triggers above 261.12, target 287.20, stop 244.30."
-    assert barge_in("stop 244.30", said) == (False, "")            # AMO hearing itself say "stop"
-    assert barge_in("target 287.20 stop", said) == (False, "")
-    assert barge_in("AMO stop", said) == (True, "stop")
-    assert barge_in("hold on", said) == (True, "")
-    assert barge_in("Hey AMO, what's my schedule today?", said) == (True, "what's my schedule today")
-    assert barge_in("never mind what's tesla doing", said) == (True, "what's tesla doing")
-    assert barge_in("the music is loud in here", said) == (False, "")
+    assert barge_in("stop 244.30", said) == (False, "", False)            # AMO hearing itself say "stop"
+    assert barge_in("target 287.20 stop", said) == (False, "", False)
+    assert barge_in("AMO stop", said) == (True, "", False)
+    assert barge_in("hold on", said) == (True, "", False)
+    assert barge_in("Hey AMO, what's my schedule today?", said) == (True, "what's my schedule today", False)
+    assert barge_in("never mind what's tesla doing", said) == (True, "what's tesla doing", False)
+    assert barge_in("the music is loud in here", said) == (False, "", False)
+    # only at the start — not a word in the middle of a sentence
+    assert barge_in("the stop is too tight on that one", said) == (False, "", False)
+
+
+def test_barge_in_corrections():
+    from amo.voice.listen import barge_in
+
+    said = "Booked Lil Jay for Friday at 7 PM, three hours."
+    assert barge_in("No, I said Thursday.", said) == (True, "Thursday", True)
+    assert barge_in("You misheard me", said) == (True, "", True)
+    assert barge_in("wait, that's not what I said", said) == (True, "", True)
+    assert barge_in("No, book him Thursday", said) == (True, "book him Thursday", True)
+    assert barge_in("no no no", said) == (True, "", True)
+    assert barge_in("I meant Tesla", said) == (True, "Tesla", True)
+    assert barge_in("Friday", said) == (False, "", False)  # just AMO's own word
+
+
+def test_correction_goes_to_brain():
+    """Cutting AMO off with a correction sends "I meant …" (the brain undoes + redoes);
+    "you misheard me" alone asks what you said."""
+    asked = []
+    replies = iter([("Booked Jay for Friday…", "Thursday", True), ("Undid that… Booked Thursday.", None),
+                    ("Booked Tesla…", "", True), ("Sorry — what did you say?", None)])
+
+    def respond(history, command):
+        asked.append(command)
+        return next(replies)
+
+    lst = Listener(segments=lambda timeout: iter(()), transcribe_wake=str, transcribe_command=str,
+                   ask=lambda h: "", say=lambda t: None, respond=respond, log=lambda *_: None)
+    lst.next_utterance = lambda timeout: None
+    lst.converse("book jay friday at 7")
+    assert asked == ["book jay friday at 7", "I meant Thursday"]
+    assert "[cut off" in lst.history[1]["content"]
+    lst.converse("add tesla to the watchlist")
+    assert asked[-1] == "you misheard me"
 
 
 def test_interrupt_then_new_question():

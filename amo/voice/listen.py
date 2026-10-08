@@ -97,28 +97,43 @@ def brief_for_speech(text: str) -> str:
     return ". ".join(lines) + "."
 
 
-# ------------------------------------------------------------------ barge-in ("AMO, stop")
-_INTERRUPT = re.compile(r"\b(stop|amo|ammo|shut up|quiet|hold on|hang on|wait|never ?mind|cancel|enough|"
-                        r"pause|okay okay|ok ok|got it)\b")
+# ------------------------------------------------------------------ interrupting AMO
+# Only deliberate phrases at the START of what you say cut AMO off — never a word mid-sentence.
+_STOP = re.compile(r"^(?:(?:hey )?(?:amo|ammo)\b[ ,]*)?(?:stop|wait|hold on|hang on|hold up|pause|cancel|"
+                   r"never ?mind|shut up|be quiet|quiet|enough)\b[ ,.!]*")
+_NO = re.compile(r"^(?:no+|nope|nah)\b[ ,.!?-]*", re.I)
 
 
-def barge_in(heard: str, being_said: str) -> tuple[bool, str]:
-    """While AMO is talking: did the user interrupt? Returns (interrupted, what they asked instead).
+def barge_in(heard: str, being_said: str) -> tuple[bool, str, bool]:
+    """While AMO is talking: did the user interrupt?
+    Returns (interrupted, what they want instead, is_correction).
+    is_correction: AMO misheard or misunderstood ("no, I said Thursday", "you misheard me").
     The mic also hears AMO itself, so anything that's mostly AMO's own words is ignored."""
+    from ..fastpath import correction
+
     h = _normalize(heard)
     if not h:
-        return False, ""
+        return False, "", False
     said = set(_normalize(being_said).split())
     words = [w for w in h.split() if len(w) > 2]
-    if words and sum(w in said for w in words) / len(words) >= 0.6:
-        return False, ""  # echo of AMO's own voice
+    if all(w in said for w in h.split()) or (words and sum(w in said for w in words) / len(words) >= 0.6):
+        return False, "", False  # echo of AMO's own voice
+    meant = correction(heard.strip())
+    if meant is not None:
+        return True, meant, True
+    if _NO.match(heard.strip()):  # "No, Thursday" / "no no no"
+        rest = heard.strip()
+        while (m := _NO.match(rest)):
+            rest = rest[m.end():]
+        return True, rest.strip(" ,.!?"), True
+    m = _STOP.match(h)
+    if m:
+        rest = h[m.end():].strip()
+        return True, rest if len(rest.split()) >= 2 else "", False
     woke, rest = match_wake(heard)
     if woke:
-        return True, rest
-    if _INTERRUPT.search(h):
-        rest = _INTERRUPT.sub(" ", h, count=1).strip()
-        return True, rest if len(rest.split()) >= 2 else ""
-    return False, ""
+        return True, rest, False
+    return False, "", False
 
 
 # ------------------------------------------------------------------ the listener
@@ -134,15 +149,18 @@ class Listener:
     chime: Callable[[], None] = lambda: None
     ack: Callable[[str], None] = lambda request: None  # "Got it" while the model works
     wait: Callable[[Any], None] = lambda worker: worker.join()  # + "Still working on it." on long waits
-    # Optional: speak-while-thinking. respond(history, command) → (reply, interruption or None).
-    # interruption is what the user said when they cut AMO off ("" = just "stop").
-    respond: Callable[[list[dict[str, str]], str], tuple[str, str | None]] | None = None
+    # Optional: speak-while-thinking. respond(history, command) → (reply, interruption or None[, correction]).
+    # interruption is what the user said when they cut AMO off ("" = just "stop"); correction=True
+    # when they cut in because AMO misheard ("no, I said Thursday").
+    respond: Callable[[list[dict[str, str]], str], tuple] | None = None
     brief: Callable[[], str] | None = None  # morning brief text (a device asks the brain for it)
     announcements: Callable[[], list[str]] | None = None  # things AMO wants to say on its own
     wake_stream: Callable[[float | None], Iterator[Any]] | None = None  # streaming wake engine (vosk/oww)
     on_state: Callable[[str], None] = lambda state: None  # idle | listening | thinking | asleep (the face)
+    on_heard: Callable[[str], None] = lambda text: None  # what AMO understood you said (the face shows it)
     poll_seconds: float = 3.0
     _interrupted: str | None = None
+    _correction: bool = False
     log: Callable[[str], None] = print
     verbose: bool = False
     follow_up_seconds: float = 7.0
@@ -193,7 +211,9 @@ class Listener:
         self.on_state("thinking")
         if self.respond is not None:
             try:
-                reply, self._interrupted = self.respond(self.history[-10:], command)
+                out = self.respond(self.history[-10:], command)
+                reply, self._interrupted = out[0], out[1]
+                self._correction = bool(out[2]) if len(out) > 2 else False
             except Exception as e:  # noqa: BLE001 — report instead of killing the listener
                 self.log(f"   ✗ {e}")
                 self.say("Sorry, I couldn't do that. Check the AMO window for details.")
@@ -228,6 +248,7 @@ class Listener:
         """Handle a command, then keep listening briefly for follow-ups (no wake phrase needed)."""
         while command:
             self.log(f"you: {command}")
+            self.on_heard(command)
             if not self.handle(command) or self.asleep:
                 if not self.asleep:
                     self.on_state("idle")
@@ -235,6 +256,14 @@ class Listener:
             self.on_state("listening")
             if self._interrupted is not None:  # cut off mid-answer
                 command, self._interrupted = self._interrupted, None
+                corrected, self._correction = self._correction, False
+                if self.history and self.history[-1]["role"] == "assistant":
+                    self.history[-1]["content"] += " [cut off — the user interrupted]"
+                if corrected:
+                    # Misheard: the brain undoes anything it just saved from the misheard request,
+                    # then does what you meant (or asks "what did you say?").
+                    command = f"I meant {command}" if command else "you misheard me"
+                    continue
                 if command:
                     continue  # "AMO, stop — what's my schedule?" → answer the new question
                 self.chime()
@@ -483,9 +512,9 @@ def run(verbose: bool = False) -> None:
 
     from .speaker import SentenceSpeaker
 
-    def respond(history: list[dict[str, str]], command: str) -> tuple[str, str | None]:
+    def respond(history: list[dict[str, str]], command: str) -> tuple[str, str | None, bool]:
         """Speak while thinking: "Got it" right away, then each sentence as soon as it's written.
-        Keeps an ear open while talking so you can cut AMO off ("AMO, stop")."""
+        Keeps an ear open while talking so you can cut AMO off ("AMO, stop", "no, I said Thursday")."""
         speaker = SentenceSpeaker(synth=synthesize, on_play=face.publish_say)
         phrase = acks.pick(command)
         if phrase:
@@ -508,6 +537,7 @@ def run(verbose: bool = False) -> None:
         worker = threading.Thread(target=work, daemon=True)
         worker.start()
         interrupt: str | None = None
+        corrected = False
         still_n, next_still = 0, time.monotonic() + settings.ack_still_after
         flushed = False
         while not speaker.wait(0.05):
@@ -528,14 +558,20 @@ def run(verbose: bool = False) -> None:
                 seg = mic.listen_once(timeout=0.4, max_seconds=3.0)
                 if seg is not None:
                     heard = transcribe_array(seg, model=settings.wake_model, prompt=WAKE_PROMPT)
-                    hit, rest = barge_in(heard, " ".join(speaker.spoken))
+                    hit, rest, corrected = barge_in(heard, " ".join(speaker.spoken))
                     if hit:
                         speaker.stop()
-                        interrupt = rest
                         print(f"   ✋ heard “{heard}” — stopping")
+                        if rest:  # re-read what you said with the better model
+                            better = transcribe_array(seg, prompt="AMO")
+                            hit2, rest2, corr2 = barge_in(better, "")
+                            rest, corrected = (rest2, corr2) if hit2 else (better, corrected)
+                        interrupt = rest
                         break
+        if corrected:  # let the misheard request finish saving, so it can be undone cleanly
+            worker.join(timeout=90)
         mic.flush()
-        return result.get("reply", ""), interrupt
+        return result.get("reply", ""), interrupt, corrected
 
     threading.Thread(target=acks.prewarm, daemon=True).start()
 
@@ -570,6 +606,7 @@ def run(verbose: bool = False) -> None:
         respond=respond if settings.stream_speech else None,
         announcements=take_pending,
         on_state=face.publish_state,
+        on_heard=face.publish_heard,
         verbose=verbose,
     )
     if verbose:

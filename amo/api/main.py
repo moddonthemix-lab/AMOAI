@@ -346,7 +346,7 @@ def face_events(after: int = -1):
 
 
 class FaceEvent(BaseModel):
-    kind: Literal["state", "say"]
+    kind: Literal["state", "say", "heard"]
     model_config = {"extra": "allow"}
 
 

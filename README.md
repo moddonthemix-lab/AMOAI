@@ -138,8 +138,22 @@ in `.env`; if it misses you, `2`. If Whisper keeps spelling the name differently
 `AMO_WAKE_WORDS=amor,emu`.
 
 **Speak while thinking:** AMO starts talking as soon as the first sentence of the answer is
-written, instead of waiting for the whole thing, and always finishes what it's saying.
-(`AMO_STREAM_SPEECH=0` turns streaming off; `AMO_BARGE_IN=1` would let you cut it off mid-answer.)
+written, instead of waiting for the whole thing. (`AMO_STREAM_SPEECH=0` turns streaming off.)
+
+**Interrupting AMO** — if it misheard or misunderstood you, just talk over it. Only deliberate
+phrases at the *start* of what you say cut it off (a word mid-sentence, or AMO hearing itself, doesn't):
+
+| Say | AMO |
+|---|---|
+| "No, I said Thursday" / "I meant Tesla" / "No, book him Thursday" | stops, undoes anything it just saved from the misheard request, does what you meant |
+| "You misheard me" / "That's not what I said" | stops, undoes it, asks "Sorry — what did you say?" |
+| "Stop" / "Wait" / "Hold on" / "Never mind" | stops (say a new request right after if you like) |
+| "AMO, what's my schedule?" | stops and answers the new question |
+
+The face (`/face`) shows what AMO heard you say, so you can spot a mishearing straight away.
+Typing works too: "undo that" (anything it added in the last 30 minutes) or "no, I meant Thursday".
+Undo removes new things (goals, bookings, payments, trades, memories, watchlist tickers, text drafts);
+for a change to an existing item, just tell AMO what it should be. `AMO_BARGE_IN=0` turns interrupting off.
 
 ### Calendar, texting clients, backups
 

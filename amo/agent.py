@@ -128,6 +128,35 @@ class Agent:
             user_text = " ".join(p.get("text", "") for p in user_text if isinstance(p, dict))
             history = [_flatten(m) for m in history]
 
+        # "Undo that" / "no, I said Thursday": take back what was just saved, then redo it right.
+        from . import undo
+
+        undone = None
+        if user_text and undo.UNDO_RE.match(user_text.strip()):
+            content = undo.undo_last(self.db)
+            if on_text:
+                on_text(content)
+            self._log(channel, user_text, content)
+            return {"content": content, "tool_calls": []}
+        meant = fastpath.correction(user_text) if user_text else None
+        if meant is not None:
+            undone = undo.undo_recent(self.db)
+            if not meant:  # "you misheard me" — ask what they said
+                content = ((undone + " ") if undone else "") + "Sorry — what did you say?"
+                if on_text:
+                    on_text(content)
+                self._log(channel, user_text, content)
+                return {"content": content, "tool_calls": []}
+            if not fastpath.match(meant):
+                meant = (f"Correction to what I asked before: {meant}. "
+                         + ("You already undid the earlier save, so do my previous request again with this change."
+                            if undone else "Answer or redo my previous request with this change."))
+            user_text = meant
+            last_user = max(i for i, m in enumerate(history) if m["role"] == "user")
+            history = [*history[:last_user], {"role": "user", "content": meant}, *history[last_user + 1:]]
+            if on_text and undone:
+                on_text(undone + " ")
+
         convo: list[dict[str, Any]] = [
             {"role": "system", "content": self.build_system_prompt(user_text, channel)},
             *history,
@@ -191,6 +220,9 @@ class Agent:
 
         if on_text and not self._final_streamed and content:
             on_text(content)
+        if undone:
+            content = f"{undone} {content}"
+        undo.record_turn(trace, self.db)
         self._log(channel, user_text, content)
         # Fact learning normally runs from the scheduler once you've gone quiet, so it never
         # competes with your next message for the CPU. learn=True forces it now (in background).

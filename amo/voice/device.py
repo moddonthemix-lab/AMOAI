@@ -103,7 +103,7 @@ def face_say(brain: Brain):
 
 
 def make_respond(brain: Brain, mic: MicSegmenter, verbose: bool = False):
-    def respond(history: list[dict[str, str]], command: str) -> tuple[str, str | None]:
+    def respond(history: list[dict[str, str]], command: str) -> tuple[str, str | None, bool]:
         speaker = SentenceSpeaker(synth=brain.speak, play=play_interruptible, on_play=face_say(brain))
         result: dict[str, Any] = {"reply": ""}
 
@@ -120,8 +120,10 @@ def make_respond(brain: Brain, mic: MicSegmenter, verbose: bool = False):
             finally:
                 speaker.finish()
 
-        threading.Thread(target=stream, daemon=True).start()
+        worker = threading.Thread(target=stream, daemon=True)
+        worker.start()
         interrupt: str | None = None
+        corrected = False
         flushed = False
         while not speaker.wait(0.05):
             if settings.barge_in and speaker.started.is_set():
@@ -131,14 +133,20 @@ def make_respond(brain: Brain, mic: MicSegmenter, verbose: bool = False):
                 seg = mic.listen_once(timeout=0.4, max_seconds=3.0)
                 if seg is not None:
                     heard = brain.hear(seg, settings.wake_model)
-                    hit, rest = barge_in(heard, " ".join(speaker.spoken))
+                    hit, rest, corrected = barge_in(heard, " ".join(speaker.spoken))
                     if hit:
                         speaker.stop()
-                        interrupt = rest
                         print(f"   ✋ heard “{heard}” — stopping")
+                        if rest:  # re-read what you said with the better model
+                            better = brain.hear(seg)
+                            hit2, rest2, corr2 = barge_in(better, "")
+                            rest, corrected = (rest2, corr2) if hit2 else (better, corrected)
+                        interrupt = rest
                         break
+        if corrected:  # let the misheard request finish saving, so it can be undone cleanly
+            worker.join(timeout=90)
         mic.flush()
-        return result["reply"], interrupt
+        return result["reply"], interrupt, corrected
 
     return respond
 
@@ -199,6 +207,7 @@ def run(brain_url: str, key: str = "", verbose: bool = False) -> None:
         brief=brain.brief,
         announcements=brain.announcements,
         on_state=lambda state: threading.Thread(target=brain.face, args=("state", {"state": state}), daemon=True).start(),
+        on_heard=lambda text: threading.Thread(target=brain.face, args=("heard", {"text": text}), daemon=True).start(),
         verbose=verbose,
     )
     try:

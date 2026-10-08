@@ -4,6 +4,7 @@ os.environ["AMO_ENV_FILE"] = "/nonexistent"
 os.environ["AMO_API_KEY"] = ""
 os.environ["AMO_AUTO_LEARN"] = "0"
 os.environ["AMO_VOICE"] = "default"
+os.environ["AMO_BACKUP_DIR"] = __import__("tempfile").mkdtemp(prefix="amo-test-backups-")
 
 import pytest  # noqa: E402
 

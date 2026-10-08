@@ -22,6 +22,9 @@
   #captions .w.on { opacity:1; color:var(--text); }
   #captions .w.now { color:var(--glow); text-shadow:0 0 18px rgba(94,231,255,.55); }
   #captions.fade { opacity:0; }
+  #heard { min-height:1.4em; max-width:min(92vw, 900px); text-align:center; color:var(--mut); font-size:clamp(14px, 2.4vw, 22px);
+           font-style:italic; transition:opacity .6s; }
+  #heard.fade { opacity:0; }
   .dots { display:inline-flex; gap:.35em; }
   .dots i { width:.32em; height:.32em; border-radius:50%; background:var(--glow); opacity:.25; animation:dot 1.2s infinite; }
   .dots i:nth-child(2) { animation-delay:.2s; } .dots i:nth-child(3) { animation-delay:.4s; }
@@ -46,6 +49,7 @@
       <path class="mouth" id="mouth"/>
     </g>
   </svg>
+  <div id="heard" class="fade" title="what AMO heard you say"></div>
   <div id="captions" aria-live="polite"></div>
 </main>
 <div id="status">connecting…</div>
@@ -75,6 +79,15 @@ const now = () => Date.now() + clockOffset;
 function handle(ev) {
   if (ev.kind === "state") { setState(ev.state); return; }
   if (ev.kind === "say") showSentence(ev);
+  if (ev.kind === "heard") showHeard(ev.text);
+}
+let heardTimer = null;
+function showHeard(text) {   // so you can see straight away if AMO misheard you
+  const el = $("heard");
+  el.textContent = "“" + text + "”";
+  el.classList.remove("fade");
+  clearTimeout(heardTimer);
+  heardTimer = setTimeout(() => el.classList.add("fade"), 15000);
 }
 function setState(s) {
   state = s; stateAt = now();

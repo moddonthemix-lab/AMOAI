@@ -65,6 +65,11 @@ if [[ ! -f data/.voice-amo ]]; then
   .venv/bin/amo set-voice amo >/dev/null 2>&1 || true
   mkdir -p data && touch data/.voice-amo
 fi
+# One-time: interrupting is back on (stricter now — only "No, I said…", "Stop", "Wait" at the start).
+if [[ ! -f data/.barge-in-v2 ]]; then
+  [[ -f .env ]] && sed -i '' 's/^AMO_BARGE_IN=0$/AMO_BARGE_IN=1/' .env 2>/dev/null || true
+  mkdir -p data && touch data/.barge-in-v2
+fi
 .venv/bin/amo setup-voice 2>/dev/null || true
 
 step "Restarting AMO"
