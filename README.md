@@ -200,9 +200,12 @@ interruptions and "good morning", and works with any USB mic/speaker. `amo lan o
 
 ### AMO's voice
 
-AMO speaks as **Obadiah**, a clean, deadpan British voice (Piper), with a dry-wit personality to match.
-It downloads automatically. Options if you ever want a change:
+AMO speaks with the **BMO voice** from [brenpoly/be-more-agent](https://github.com/brenpoly/be-more-agent/releases/tag/v1.0-voice)
+(a Piper model, ~64 MB, downloaded automatically) — for now, until AMO gets a voice of its own.
+That model is a non-commercial fan project (MIT-licensed code; "BMO" belongs to Cartoon Network),
+so keep it to personal use. Options if you ever want a change:
 ```sh
+amo try-voice obadiah      # AMO's previous voice: clean, deadpan British
 amo try-voice computer     # Obadiah with a robotic edge
 amo voices --all           # every Piper English voice
 amo set-voice amo          # back to AMO's voice

@@ -206,14 +206,16 @@ def test_piper_speaker_names(tmp_path, monkeypatch):
     assert tts.speaker_id("en_GB-alan-medium") is None
 
 
-def test_amo_voice_is_clean_obadiah_with_computer_personality(monkeypatch):
+def test_amo_voice_is_bmo_with_computer_personality(monkeypatch):
     from amo.config import settings
     from amo.voice import tts
 
     monkeypatch.setattr(settings, "voice", "amo")
     monkeypatch.setattr(settings, "personality", "")
     st = tts.resolve_style()
-    assert st.piper == "en_GB-semaine-medium:obadiah" and st.pitch == 0 and st.robot == 0
+    assert st.piper == "bmo" and "bmo" in tts.CUSTOM_VOICES and st.pitch == 0 and st.robot == 0
+    assert tts.piper_path("bmo").name == "bmo.onnx"
+    assert tts.resolve_style("obadiah").piper == "en_GB-semaine-medium:obadiah"
     assert st.noise < 0.667 and st.noise_w < 0.8
     assert tts.active_personality() == "computer"
     monkeypatch.setattr(settings, "personality", "jarvis")

@@ -60,11 +60,14 @@ if command -v uv >/dev/null && [[ -x .venv/bin/python ]]; then
     uv pip install --python .venv/bin/python -q "$pkg" 2>/dev/null || echo "  couldn't install $pkg (needed for voice input)"
   done
 fi
-# One-time: switch to AMO's final voice (clean Obadiah). Later voice choices are left alone.
-if [[ ! -f data/.voice-amo ]]; then
+# One-time: switch to AMO's voice (now the BMO voice). Later voice choices are left alone.
+if [[ ! -f data/.voice-bmo ]]; then
   .venv/bin/amo set-voice amo >/dev/null 2>&1 || true
-  mkdir -p data && touch data/.voice-amo
+  mkdir -p data && touch data/.voice-amo data/.voice-bmo
 fi
+echo "  fetching AMO's voice (first time only, ~64 MB)…"
+.venv/bin/python -c "from amo.voice.tts import download_piper_voice; download_piper_voice('bmo')" 2>/dev/null \
+  || echo "  couldn't download the voice now — AMO will fetch it the first time it speaks"
 # One-time: interrupting is back on (stricter now — only "No, I said…", "Stop", "Wait" at the start).
 if [[ ! -f data/.barge-in-v2 ]]; then
   [[ -f .env ]] && sed -i '' 's/^AMO_BARGE_IN=0$/AMO_BARGE_IN=1/' .env 2>/dev/null || true

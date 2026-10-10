@@ -31,6 +31,12 @@ from ..config import settings
 from .stt import VoiceUnavailable
 
 PIPER_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
+# Custom Piper voices that aren't in the official repo: name → .onnx download (the .json sits beside it).
+CUSTOM_VOICES = {
+    # BMO voice by brenpoly (be-more-agent, MIT; fine-tuned from Piper's en_US-amy-medium).
+    # A non-commercial fan model — AMO uses it for now until we build its own.
+    "bmo": "https://github.com/brenpoly/be-more-agent/releases/download/v1.0-voice/bmo.onnx",
+}
 
 
 @dataclass(frozen=True)
@@ -47,10 +53,11 @@ class VoiceStyle:
 
 
 PRESETS: dict[str, VoiceStyle] = {
-    # AMO's voice: Obadiah (Piper "semaine" voice), a deadpan British male, rendered clean —
-    # no effects, reduced breathiness and wobble.
-    "amo": VoiceStyle("en_GB-semaine-medium:obadiah", ("Daniel", "Oliver", "Arthur"),
-                      personality="computer", noise=0.35, noise_w=0.5),
+    # AMO's voice (for now): the BMO voice from brenpoly/be-more-agent, slightly steadied.
+    "amo": VoiceStyle("bmo", ("Samantha", "Alex"), personality="computer", noise=0.5, noise_w=0.6),
+    # AMO's previous voice: Obadiah (Piper "semaine"), a deadpan British male, rendered clean.
+    "obadiah": VoiceStyle("en_GB-semaine-medium:obadiah", ("Daniel", "Oliver", "Arthur"),
+                          personality="computer", noise=0.35, noise_w=0.5),
     "computer": VoiceStyle("en_GB-semaine-medium:obadiah", ("Daniel", "Oliver", "Arthur"),
                            pitch=-1.0, robot=0.32, personality="computer", noise=0.35, noise_w=0.5),
     "jarvis": VoiceStyle("en_GB-alan-medium", ("Daniel", "Oliver", "Arthur"),
@@ -78,7 +85,7 @@ def resolve_style(voice: str | None = None) -> VoiceStyle:
         style = PRESETS[name]
     elif name.startswith("say:"):
         style = VoiceStyle(PRESETS["default"].piper, (name[4:],))
-    elif re.match(r"^[a-z]{2}_[A-Z]{2}-", name):  # Piper voice, optionally "name:speaker"
+    elif re.match(r"^[a-z]{2}_[A-Z]{2}-", name) or split_speaker(name)[0] in CUSTOM_VOICES:  # Piper voice
         style = VoiceStyle(name, PRESETS["default"].say)
     else:
         style = PRESETS.get(settings.voice, PRESETS["default"])
@@ -137,6 +144,16 @@ def piper_installed() -> bool:
 def download_piper_voice(voice_name: str) -> Path:
     """Fetch a Piper voice (e.g. en_GB-alan-medium) from the official voice repo."""
     voice_name = split_speaker(voice_name)[0]
+    if voice_name in CUSTOM_VOICES:
+        dest = piper_path(voice_name)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        for suffix in (".json", ""):
+            target = Path(str(dest) + suffix)
+            if not target.exists():
+                tmp = target.with_name(target.name + ".part")
+                urllib.request.urlretrieve(CUSTOM_VOICES[voice_name] + suffix, tmp)
+                tmp.replace(target)
+        return dest
     m = re.match(r"^(([a-z]{2})_[A-Z]{2})-(.+)-(x_low|low|medium|high)$", voice_name)
     if not m:
         raise ValueError(f"not a Piper voice name: {voice_name}")
