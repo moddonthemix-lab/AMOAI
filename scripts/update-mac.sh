@@ -73,6 +73,11 @@ fi
 echo "  fetching AMO's voice (first time only, ~64 MB)…"
 .venv/bin/python -c "from amo.voice.tts import download_piper_voice; download_piper_voice('bmo')" 2>/dev/null \
   || echo "  couldn't download the voice now — AMO will fetch it the first time it speaks"
+# One-time: keep the model loaded so replies start fast (AMO warms it up at start too).
+if [[ ! -f data/.keep-alive-v2 ]]; then
+  [[ -f .env ]] && sed -i '' 's/^AMO_KEEP_ALIVE=30m$/AMO_KEEP_ALIVE=-1/' .env 2>/dev/null || true
+  mkdir -p data && touch data/.keep-alive-v2
+fi
 # One-time: interrupting is back on (stricter now — only "No, I said…", "Stop", "Wait" at the start).
 if [[ ! -f data/.barge-in-v2 ]]; then
   [[ -f .env ]] && sed -i '' 's/^AMO_BARGE_IN=0$/AMO_BARGE_IN=1/' .env 2>/dev/null || true

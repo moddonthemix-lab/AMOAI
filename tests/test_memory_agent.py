@@ -304,6 +304,23 @@ def test_mood_reads_the_moment(db, llm, monkeypatch):
 
     monkeypatch.setattr(settings, "personality", "mood")
     a = Agent(db)
-    assert 'mood is "' in a.build_system_prompt("ugh rough day", "voice")
+    assert "Mood: steady" in a.turn_note("ugh rough day")
+    assert "adapt to" in a.build_system_prompt("ugh rough day", "voice")
     out = a.chat([{"role": "user", "content": "add a daily goal: make one beat"}])["content"]
     assert out.startswith(mood.current(db).openers) and "Make one beat" in out
+
+
+def test_system_prompt_is_stable_for_prompt_caching(db, llm, monkeypatch):
+    """Same system prompt every turn (so Ollama reuses its cache); the time, mood and relevant
+    memories ride along in a note at the top of the latest message."""
+    from amo.agent import Agent
+    from amo.memory import Memory
+
+    Memory(db).add("Jay records on Fridays", "studio", 3)
+    a = Agent(db)
+    a.chat([{"role": "user", "content": "tell me about Jay"}])
+    a.chat([{"role": "user", "content": "ugh rough day, what's tesla doing"}])
+    first, second = llm.calls[0]["messages"], llm.calls[-1]["messages"]
+    assert first[0]["content"] == second[0]["content"]
+    assert first[-1]["content"].startswith("(Now: ") and "Jay records on Fridays" in first[-1]["content"]
+    assert first[-1]["content"].endswith("tell me about Jay")

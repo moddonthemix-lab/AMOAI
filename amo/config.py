@@ -104,6 +104,8 @@ class Settings:
     wake_words: str = field(default_factory=lambda: _env("AMO_WAKE_WORDS", ""))
     # Mic sensitivity: how many times louder than the room you must be (1.5 = very sensitive, 4 = strict).
     wake_sensitivity: float = field(default_factory=lambda: float(_env("AMO_WAKE_SENSITIVITY", "2")))
+    # Seconds of silence that mean you've finished talking (raise it if AMO cuts you off mid-thought).
+    end_silence: float = field(default_factory=lambda: float(_env("AMO_END_SILENCE", "0.9")))
 
     whisper_model: str = field(default_factory=lambda: _env("AMO_WHISPER_MODEL", "base.en"))
     piper_voice: str = field(
@@ -116,7 +118,8 @@ class Settings:
     # Model runtime: context window (tokens), how long Ollama keeps the model loaded,
     # and whether "thinking" models (qwen3, gemma4…) may think before answering (slow on CPU).
     num_ctx: int = field(default_factory=lambda: int(_env("AMO_NUM_CTX", "8192")))
-    keep_alive: str = field(default_factory=lambda: _env("AMO_KEEP_ALIVE", "30m"))
+    # -1 = keep the model loaded (fast replies); e.g. 30m frees the memory after 30 idle minutes.
+    keep_alive: str = field(default_factory=lambda: _env("AMO_KEEP_ALIVE", "-1"))
     think: bool = field(default_factory=lambda: _env("AMO_THINK", "0") in ("1", "true", "yes"))
 
     # Web search: blank = DuckDuckGo (no key). Or your own SearXNG, e.g. http://localhost:8888

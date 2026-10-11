@@ -19,10 +19,16 @@ class LLMError(RuntimeError):
 _THINKING_FAMILIES = ("qwen3", "gemma4", "deepseek-r1", "magistral", "phi4-reasoning")
 
 
+def _keep_alive(value: str) -> str | int:
+    """'-1' / '3600' → a number (Ollama reads bare numbers as seconds, -1 = forever); '30m' stays text."""
+    v = str(value).strip()
+    return int(v) if v.lstrip("-").isdigit() else v
+
+
 def runtime_params(model: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
     params: dict[str, Any] = {
         "options": {"num_ctx": settings.num_ctx, **(options or {})},
-        "keep_alive": settings.keep_alive,
+        "keep_alive": _keep_alive(settings.keep_alive),
     }
     if model.split("/")[-1].startswith(_THINKING_FAMILIES):
         params["think"] = settings.think

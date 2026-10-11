@@ -48,7 +48,7 @@ def test_short_correction_goes_to_model_with_context(db, llm):
                   {"role": "assistant", "content": "Noted."},
                   {"role": "user", "content": "no I meant Thursdays"}])
     sent = [m for m in llm.calls[-1]["messages"] if m["role"] == "user"][-1]["content"]
-    assert sent.startswith("Correction to what I asked before: Thursdays") and "undid" in sent
+    assert "Correction to what I asked before: Thursdays" in sent and "undid" in sent
     assert [m["content"] for m in db.all("SELECT content FROM memories WHERE archived = 0")] == ["Jay likes Thursdays"]
     assert out["content"].startswith("Undid that")
 

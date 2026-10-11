@@ -134,6 +134,8 @@ class StreamingWake:
             block = self.mic._read()
             level = self.mic._rms(block)
             self.mic._watch(level)
+            if hasattr(self.mic, "end"):  # keep the room-noise estimate current while waiting
+                self.mic.end.history.append(level)
             # A pause means a new sentence: start the detector fresh, so "Hey AMO" said after
             # other talk still counts as the start of what you said.
             quiet = quiet + 1 if level < self.mic.threshold else 0
@@ -148,20 +150,8 @@ class StreamingWake:
                     deadline = time.monotonic() + timeout
 
     def _follow_on(self):
-        """If speech continues right after "Hey AMO", capture it until you pause."""
-        np = self.mic.np
-        for _ in range(self.follow_blocks):
-            block = self.mic._read()
-            if self.mic._rms(block) >= self.mic.threshold:
-                chunks, quiet = [block], 0
-                while len(chunks) < self.mic.max_blocks:
-                    b = self.mic._read()
-                    chunks.append(b)
-                    quiet = quiet + 1 if self.mic._rms(b) < self.mic.threshold else 0
-                    if quiet >= self.mic.silence_blocks:
-                        break
-                return np.concatenate(chunks)
-        return None
+        """If speech continues right after "Hey AMO", capture it until you've finished."""
+        return self.mic.listen_once(timeout=self.follow_blocks / 10, max_seconds=15.0)
 
 
 def setup(engine: str) -> None:

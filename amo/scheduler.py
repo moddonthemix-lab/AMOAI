@@ -108,6 +108,11 @@ def tick(db: Database, now: datetime | None = None) -> list[str]:
         except Exception:  # noqa: BLE001 — recall indexing is best effort
             log.exception("conversation indexing failed")
 
+    from .warmup import keep_warm
+
+    if keep_warm():  # Ollama dropped the model (restart / keep_alive) → load it again
+        ran.append("warm")
+
     from .integrations import nightly_backup
     from .proactive import run_jobs
 

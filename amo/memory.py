@@ -183,7 +183,7 @@ class Memory:
         return self.db.all(
             "SELECT id, content, category, importance FROM memories "
             "WHERE archived = 0 AND importance >= 4 "
-            "ORDER BY importance DESC, use_count DESC, created_at DESC LIMIT ?",
+            "ORDER BY importance DESC, id DESC LIMIT ?",  # stable order: keeps the prompt cacheable
             (limit,),
         )
 

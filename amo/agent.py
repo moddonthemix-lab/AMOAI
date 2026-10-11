@@ -40,7 +40,7 @@ How you work:
 - Use the tools to read and write real data. Never invent numbers, clients, trades or bookings — look them up.
 - When {owner} tells you something durable (a preference, a person, a price, a rule, a plan), save it with `remember`.
 - Be direct and brief, like a sharp chief of staff. Lead with the answer. No filler.
-- Dates: today is {today} ({weekday}), local time {time}. Convert relative dates ("Friday", "tomorrow at 7") to 'YYYY-MM-DD HH:MM' before calling tools.
+- Dates: the current date and time are in the note at the top of {owner}'s latest message. Convert relative dates ("Friday", "tomorrow at 7") to 'YYYY-MM-DD HH:MM' before calling tools.
 - You can change or delete anything (goals, clients, sessions, payments, inventory, trades, rules,
   Cravvr tasks, memories) with update_record / delete_record. Only say something is saved, changed or
   deleted after the tool succeeded.
@@ -51,7 +51,13 @@ How you work:
 {voice_hint}{personality}
 What you know about {owner}:
 {core}
-{relevant}{reflection}"""
+{reflection}"""
+
+# The system prompt above stays byte-for-byte the same from turn to turn, so Ollama can reuse the
+# work it already did on it (prompt caching) and start answering in about a second instead of
+# re-reading thousands of tokens. Everything that changes every turn — the time, memories relevant
+# to this message, the current mood — goes in a short note at the top of the latest message instead.
+TURN_NOTE = "({note})\n\n"
 
 PERSONALITIES = {
     "default": "",
@@ -91,35 +97,44 @@ class Agent:
         self.memory = Memory(self.db)
 
     # ------------------------------------------------------------ context
-    def build_system_prompt(self, user_text: str, channel: str = "webui") -> str:
+    def build_system_prompt(self, user_text: str = "", channel: str = "webui") -> str:
+        """The stable part of the prompt (see TURN_NOTE for what changes every turn)."""
         core = self.memory.core(12)
-        core_ids = {m["id"] for m in core}
-        relevant = [m for m in self.memory.search(user_text, limit=settings.memory_context_limit)
-                    if m["id"] not in core_ids] if user_text.strip() else []
         latest = self.db.one("SELECT summary FROM reflections ORDER BY id DESC LIMIT 1")
-        now = local_now()
         name = active_personality()
-        if name == "mood":  # adapts to how you're doing right now (see mood.py)
+        if name == "mood":  # how to adapt is stable; the mood right now goes in the turn note
             from . import mood
 
-            m, why = mood.read(user_text, self.db, now)
-            mood.set_current(m, why, self.db)
-            personality = mood.prompt(m, why).format(owner=settings.owner_name)
+            personality = mood.BASE_PROMPT.format(owner=settings.owner_name)
         else:
             personality = PERSONALITIES.get(name, "").format(owner=settings.owner_name)
         return SYSTEM_PROMPT.format(
             assistant=settings.assistant_name,
             owner=settings.owner_name,
-            today=now.date().isoformat(),
-            weekday=now.strftime("%A"),
-            time=now.strftime("%H:%M"),
             voice_hint=VOICE_HINT if channel == "voice" else "",
             personality=personality,
             core=_format_memories(core) or "- (nothing yet — learn as you go)",
-            relevant=("\nPossibly relevant memories:\n" + _format_memories(relevant) + "\n") if relevant else "",
             reflection=("\nYour latest weekly reflection (patterns you noticed):\n" + latest["summary"] + "\n")
             if latest else "",
         )
+
+    def turn_note(self, user_text: str) -> str:
+        """What changes every turn: the time, the mood right now, memories relevant to this message."""
+        now = local_now()
+        parts = [f"Now: {now:%A} {now.date().isoformat()}, {now:%H:%M}"]
+        if active_personality() == "mood":
+            from . import mood
+
+            m, why = mood.read(user_text, self.db, now)
+            mood.set_current(m, why, self.db)
+            parts.append(mood.note(m, why))
+        if user_text.strip():
+            core_ids = {m["id"] for m in self.memory.core(12)}
+            relevant = [m for m in self.memory.search(user_text, limit=settings.memory_context_limit)
+                        if m["id"] not in core_ids]
+            if relevant:
+                parts.append("Possibly relevant: " + " | ".join(m["content"] for m in relevant))
+        return TURN_NOTE.format(note=". ".join(parts))
 
     # ------------------------------------------------------------ chat
     def chat(
@@ -178,6 +193,8 @@ class Agent:
             {"role": "system", "content": self.build_system_prompt(user_text, channel)},
             *history,
         ]
+        if user_text and convo[-1].get("role") == "user" and isinstance(convo[-1].get("content"), str):
+            convo[-1] = {**convo[-1], "content": self.turn_note(user_text) + convo[-1]["content"]}
         llm = get_llm()
         recent_user = " ".join(
             m["content"] for m in history[-6:] if m["role"] == "user" and isinstance(m["content"], str)

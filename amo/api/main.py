@@ -55,12 +55,12 @@ async def lifespan(app: FastAPI):
 
         watcher = TimerWatcher()
         watcher.start()
-        # Pre-render the "Got it" / "Let me think" phrases so they play instantly.
+        # Load the models and cache AMO's prompt now, so the first question is fast.
         import threading
 
-        from ..voice import acks
+        from ..warmup import warm_all
 
-        threading.Thread(target=acks.prewarm, daemon=True).start()
+        threading.Thread(target=warm_all, daemon=True).start()
     yield
     if scheduler:
         scheduler.stop()

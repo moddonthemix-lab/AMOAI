@@ -346,25 +346,93 @@ class Listener:
 
 
 # ------------------------------------------------------------------ real audio
-class MicSegmenter:
-    """Splits microphone audio into utterances with a loudness gate calibrated to the room."""
+class Endpointer:
+    """Decides when you start and stop talking, from 50 ms loudness frames.
 
-    def __init__(self, sensitivity: float = 2.0, max_seconds: float = 12.0, silence: float = 0.8,
+    - Room noise = the QUIETEST moment of the last 3 seconds (gaps between words keep it honest), so
+      it follows a fan, music or the mic's auto-volume without mistaking your voice for noise.
+    - Speech starts after 0.15 s above noise × sensitivity; it ends after `end_silence` seconds with
+      no speech-level frame at all (not "quiet enough" frames — after you stop, a mic with auto-gain
+      pumps the noise up, which used to keep AMO waiting until the 12-second limit).
+    - Under 0.3 s of actual speech (a click, a cough) is ignored, so Whisper never gets fed noise.
+    """
+
+    FRAME = SAMPLE_RATE // 20  # 50 ms
+
+    def __init__(self, sensitivity: float = 2.2, end_silence: float = 0.9, max_seconds: float = 15.0,
+                 min_level: float = 0.004):
+        from collections import deque
+
+        self.sensitivity, self.min_level = sensitivity, min_level
+        self.end_frames = max(1, int(end_silence * 20))
+        self.max_frames = int(max_seconds * 20)
+        self.history: Any = deque(maxlen=60)  # 3 s of frame levels
+        self.start_floor = 0.0
+        self.reset()
+
+    def reset(self) -> None:
+        self.active, self.frames, self.run, self.speech, self.since_speech = False, 0, 0, 0, 0
+        self.peak = 0.0
+
+    @property
+    def floor(self) -> float:
+        return max(min(self.history), 0.0005) if self.history else 0.003
+
+    @property
+    def threshold(self) -> float:
+        floor = self.floor
+        if self.active:  # during a long, gapless sentence the 3 s minimum creeps up — don't let it run away
+            floor = min(floor, self.start_floor * 4)
+        return max(self.min_level, floor * self.sensitivity)
+
+    def feed(self, level: float) -> str:
+        """One frame's loudness → "idle" | "start" | "speech" | "end" | "noise" (too short to be speech)."""
+        self.history.append(level)
+        loud = level >= self.threshold
+        if self.active:
+            # Also relative to how loud YOU are: a voice peaks well above any noise the mic's
+            # auto-gain pumps up after you stop, so that noise can't keep the utterance going.
+            self.peak = max(level, self.peak * 0.995)  # follows your voice (~10 s memory)
+            loud = loud and level >= self.peak * 0.22
+        if not self.active:
+            self.run = self.run + 1 if loud else 0
+            if self.run >= 3:
+                self.active, self.frames, self.speech, self.since_speech = True, self.run, self.run, 0
+                self.start_floor = self.floor
+                self.peak = level
+                return "start"
+            return "idle"
+        self.frames += 1
+        if loud:
+            self.speech += 1
+            self.since_speech = 0
+        else:
+            self.since_speech += 1
+        if self.since_speech >= self.end_frames or self.frames >= self.max_frames:
+            enough = self.speech >= 6
+            self.reset()
+            return "end" if enough else "noise"
+        return "speech"
+
+
+class MicSegmenter:
+    """Splits microphone audio into utterances (see Endpointer for how it decides)."""
+
+    def __init__(self, sensitivity: float = 2.0, max_seconds: float = 15.0, silence: float | None = None,
                  meter: bool = False):
         import numpy as np
         import sounddevice as sd
 
         self.np, self.sd = np, sd
-        self.sensitivity = sensitivity
         self.meter = meter
         self._ticks = 0
         self._zero_blocks = 0
         self._warned_silent = False
-        self.max_blocks = int(max_seconds * SAMPLE_RATE / BLOCK)
-        self.silence_blocks = int(silence * SAMPLE_RATE / BLOCK)
+        self.end = Endpointer(sensitivity=max(sensitivity, 1.5),
+                              end_silence=settings.end_silence if silence is None else silence,
+                              max_seconds=max_seconds)
         self.stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32", blocksize=BLOCK)
         self.stream.start()
-        self.noise_floor = 0.003
         self.calibrate()
 
     def _rms(self, block) -> float:
@@ -375,12 +443,21 @@ class MicSegmenter:
         return block[:, 0].copy()
 
     def calibrate(self, seconds: float = 1.5) -> None:
-        levels = sorted(self._rms(self._read()) for _ in range(int(seconds * SAMPLE_RATE / BLOCK)))
-        self.noise_floor = max(levels[len(levels) // 2], 0.001)
+        for _ in range(int(seconds * SAMPLE_RATE / BLOCK)):
+            for frame in self._frames(self._read()):
+                self.end.history.append(self._rms(frame))
+
+    def _frames(self, block):
+        f = Endpointer.FRAME
+        return [block[i:i + f] for i in range(0, len(block) - f + 1, f)]
+
+    @property
+    def noise_floor(self) -> float:
+        return self.end.floor
 
     @property
     def threshold(self) -> float:
-        return max(self.noise_floor * self.sensitivity, 0.004)
+        return self.end.threshold
 
     def flush(self) -> None:
         """Drop audio captured while AMO was talking (so it doesn't hear itself)."""
@@ -407,41 +484,40 @@ class MicSegmenter:
 
     def listen_once(self, timeout: float, max_seconds: float = 3.0) -> Any | None:
         """One short utterance (used to catch interruptions while AMO talks), or None."""
-        saved = self.max_blocks
-        self.max_blocks = int(max_seconds * SAMPLE_RATE / BLOCK)
+        saved = self.end.max_frames
+        self.end.max_frames = int(max_seconds * 20)
         try:
             for seg in self(timeout):
                 return seg
             return None
         finally:
-            self.max_blocks = saved
+            self.end.max_frames = saved
 
     def __call__(self, timeout: float | None) -> Iterator[Any]:
         np = self.np
         deadline = time.monotonic() + timeout if timeout else None
-        pre: list = []  # keep a little audio from just before speech starts
+        pre: list = []  # 300 ms from just before speech starts, so the first word isn't clipped
+        chunks: list = []
+        self.end.reset()
         while True:
-            if deadline and time.monotonic() > deadline:
+            if deadline and not self.end.active and time.monotonic() > deadline:
                 return
             block = self._read()
-            level = self._rms(block)
-            self._watch(level)
-            if level < self.threshold:
-                pre = (pre + [block])[-3:]
-                # Track slow changes in room noise (fans, music in the next room).
-                self.noise_floor = 0.995 * self.noise_floor + 0.005 * max(level, 0.001)
-                continue
-            chunks, quiet = pre + [block], 0
-            while len(chunks) < self.max_blocks:
-                b = self._read()
-                chunks.append(b)
-                quiet = quiet + 1 if self._rms(b) < self.threshold else 0
-                if quiet >= self.silence_blocks:
-                    break
-            if len(chunks) - quiet - len(pre) < 3:  # under ~0.3s of sound: a click or bump
-                continue
-            yield np.concatenate(chunks)
-            deadline = time.monotonic() + timeout if timeout else None
+            self._watch(self._rms(block))
+            for frame in self._frames(block):
+                state = self.end.feed(self._rms(frame))
+                if state == "idle":
+                    pre = (pre + [frame])[-6:]
+                elif state == "start":
+                    chunks = pre + [frame]
+                    pre = []
+                elif state == "speech":
+                    chunks.append(frame)
+                elif state in ("end", "noise"):
+                    if state == "end":
+                        yield np.concatenate(chunks)
+                        deadline = time.monotonic() + timeout if timeout else None
+                    chunks = []
 
 
 def chime_wav() -> bytes:
@@ -574,6 +650,9 @@ def run(verbose: bool = False) -> None:
         return result.get("reply", ""), interrupt, corrected
 
     threading.Thread(target=acks.prewarm, daemon=True).start()
+    # Load the command model now too (the wake model loads below), so the first request isn't slow.
+    threading.Thread(target=lambda: transcribe_array(mic.np.zeros(SAMPLE_RATE // 2, dtype="float32"),
+                                                     prompt="AMO"), daemon=True).start()
 
     from .wake import StreamingWake, WakeEvent, make_detector
 

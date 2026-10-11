@@ -95,6 +95,16 @@ def read(user_text: str = "", db: Database | None = None, now: datetime | None =
     return MOODS["chill"], "a normal moment"
 
 
+BASE_PROMPT = ("\nPersonality: you adapt to {owner}'s mood. Your baseline is chill; the mood right now is in "
+               "the note at the top of their latest message — match it. Whatever the mood, stay accurate with "
+               "numbers, dates and money, and never use *actions in asterisks*.\n")
+
+
+def note(mood: Mood, why: str) -> str:
+    """The per-turn part (goes in the turn note, so the system prompt never changes)."""
+    return f"Mood: {mood.name} ({why}) — be {mood.tone.rstrip('.')}"
+
+
 def prompt(mood: Mood, why: str) -> str:
     return ("\nPersonality: you adapt to {owner}'s mood. Your baseline is chill; right now the mood is "
             f"\"{mood.name}\" ({why}). Be {mood.tone} Whatever the mood, stay accurate with numbers, dates "
