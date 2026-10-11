@@ -611,11 +611,32 @@ def run(verbose: bool = False) -> None:
 
     from .speaker import SentenceSpeaker
 
+    stt_last: dict[str, Any] = {}  # how long the last request took to transcribe (speed report)
+
     def respond(history: list[dict[str, str]], command: str) -> tuple[str, str | None, bool]:
         """Speak while thinking: "Got it" right away, then each sentence as soon as it's written.
         Keeps an ear open while talking so you can cut AMO off ("AMO, stop", "no, I said Thursday")."""
-        speaker = SentenceSpeaker(synth=synthesize, on_play=face.publish_say)
+        from ..perf import Turn
+
+        # timed from when you stopped talking (speech-to-text included) to AMO's first real sentence
+        heard = stt_last if stt_last.get("text") == command else {}
+        turn = Turn("voice", command, started=heard.get("started"))
+        if heard:
+            turn.add("stt", heard["ms"])
         phrase = acks.pick(command)
+
+        def played(text: str, wav: bytes) -> None:
+            if text != phrase:
+                turn.mark("first_audio")
+            face.publish_say(text, wav)
+
+        def timed_synth(text: str) -> bytes:
+            if "first_audio" in turn.marks or turn.sums.get("tts"):
+                return synthesize(text)
+            with turn.timer("tts"):
+                return synthesize(text)
+
+        speaker = SentenceSpeaker(synth=timed_synth, on_play=played)
         if phrase:
             try:
                 speaker.say_audio(acks.audio(phrase), phrase)
@@ -625,7 +646,7 @@ def run(verbose: bool = False) -> None:
 
         def work() -> None:
             try:
-                result["reply"] = agent.chat(history, channel="voice", on_text=speaker.feed)["content"]
+                result["reply"] = agent.chat(history, channel="voice", on_text=speaker.feed, turn=turn)["content"]
             except Exception as e:  # noqa: BLE001
                 result["error"] = e
                 print(f"   ✗ {e}")
@@ -670,6 +691,8 @@ def run(verbose: bool = False) -> None:
         if corrected:  # let the misheard request finish saving, so it can be undone cleanly
             worker.join(timeout=90)
         mic.flush()
+        turn.info["interrupted"] = interrupt is not None
+        turn.save(model=settings.chat_model)
         return result.get("reply", ""), interrupt, corrected
 
     threading.Thread(target=acks.prewarm, daemon=True).start()
@@ -691,9 +714,15 @@ def run(verbose: bool = False) -> None:
         return transcribe_array(seg, model=settings.wake_model, prompt=WAKE_PROMPT)
 
     def command_text(seg) -> str:
+        started = time.monotonic()
         if isinstance(seg, WakeEvent):
-            return "Hey AMO " + (transcribe_array(seg.audio, prompt=vocab()) if seg.audio is not None else "")
-        return transcribe_array(seg, prompt=vocab())
+            text = "Hey AMO " + (transcribe_array(seg.audio, prompt=vocab()) if seg.audio is not None else "")
+        else:
+            text = transcribe_array(seg, prompt=vocab())
+        woke, rest = match_wake(text)
+        stt_last.update(text=rest if woke and rest else text, started=started,
+                        ms=(time.monotonic() - started) * 1000)
+        return text
 
     listener = Listener(
         segments=mic,

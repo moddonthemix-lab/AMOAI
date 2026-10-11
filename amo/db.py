@@ -387,6 +387,28 @@ MIGRATIONS: list[str] = [
         created_at TEXT NOT NULL
     );
     """,
+    # 18 — speed report: how long each request took, and where the time went
+    """
+    CREATE TABLE timings (
+        id INTEGER PRIMARY KEY,
+        at TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        request TEXT,
+        path TEXT,                 -- instant | fastpath | model | coder
+        model TEXT,
+        first_ms INTEGER,          -- until the first word (text) / first sound (voice)
+        total_ms INTEGER,
+        stt_ms INTEGER,            -- speech → text
+        model_ms INTEGER,          -- inside the AI model
+        first_token_ms INTEGER,    -- the model's first word
+        tool_ms INTEGER,           -- running tools (database, market data, web…)
+        tts_ms INTEGER,            -- making the first sentence's audio
+        model_calls INTEGER,
+        tools TEXT,
+        ok INTEGER NOT NULL DEFAULT 1
+    );
+    CREATE INDEX timings_at ON timings(at);
+    """,
 ]
 
 

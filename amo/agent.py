@@ -7,6 +7,7 @@ import json
 import re
 import logging
 import threading
+import time
 from typing import Any, Callable
 
 from . import tools
@@ -113,6 +114,14 @@ class Agent:
     def __init__(self, db: Database | None = None):
         self.db = db or get_db()
         self.memory = Memory(self.db)
+        self._turn = None
+
+    def _call_tool(self, name: str, args: Any) -> str:
+        """Run a tool, timed for the speed report."""
+        if self._turn is None:
+            return tools.call(name, args)
+        with self._turn.timer("tool"):
+            return tools.call(name, args)
 
     # ------------------------------------------------------------ context
     def build_system_prompt(self, user_text: str = "", channel: str = "webui") -> str:
@@ -163,6 +172,48 @@ class Agent:
 
     # ------------------------------------------------------------ chat
     def chat(
+        self,
+        messages: list[dict[str, Any]],
+        channel: str = "webui",
+        model: str | None = None,
+        learn: bool | None = None,
+        on_text: Callable[[str], None] | None = None,
+        turn: Any = None,
+    ) -> dict[str, Any]:
+        """Run one assistant turn, timed for the speed report (perf.py). Pass `turn` to add your own
+        timings (speech-to-text, first sound) — then you save it; otherwise it's saved here."""
+        from .perf import Turn
+
+        own = turn is None
+        last = next((m.get("content") for m in reversed(messages) if m.get("role") == "user"), "")
+        turn = turn or Turn(channel, last if isinstance(last, str) else "")
+        outer, self._turn = getattr(self, "_turn", None), turn
+
+        def timed_text(piece: str) -> None:
+            turn.mark("first_text")
+            on_text(piece)
+
+        try:
+            out = self._chat(messages, channel, model, learn, timed_text if on_text else None)
+        except Exception:
+            turn.info["ok"] = False
+            if own:
+                turn.save(self.db, model=model or settings.chat_model)
+            raise
+        finally:
+            self._turn = outer
+        turn.mark("first_text")
+        if "path" not in turn.info:
+            turn.info["path"] = ("model" if turn.info["model_calls"] else
+                                 "fastpath" if out["tool_calls"] else "instant")
+        turn.info["tools"] = [t["name"] for t in out["tool_calls"]]
+        turn.info["ok"] = turn.info.get("ok", True) and not any(
+            isinstance(t.get("result"), dict) and "error" in t["result"] for t in out["tool_calls"])
+        if own:
+            turn.save(self.db, model=model or settings.chat_model)
+        return out
+
+    def _chat(
         self,
         messages: list[dict[str, Any]],
         channel: str = "webui",
@@ -280,10 +331,10 @@ class Agent:
             fast = fast or fastpath.match(user_text)
         if fast:
             name, args = fast
-            result = json.loads(tools.call(name, args))
+            result = json.loads(self._call_tool(name, args))
             if name == "show_chart" and "error" not in result:
                 # "Pull up the chart" → show it AND give the read.
-                result = json.loads(tools.call("strat_analysis", {"symbol": result["symbol"]}))
+                result = json.loads(self._call_tool("strat_analysis", {"symbol": result["symbol"]}))
                 name = "strat_analysis"
             content = instant_reply([{"name": name, "arguments": args, "result": result}]) or ""
             if content:
@@ -296,6 +347,8 @@ class Agent:
                 else:
                     content = result.get("text") or result.get("error", "")
             elif name.startswith(("code_", "self_")):
+                if name in ("code_help", "code_explain", "code_fix") and self._turn is not None:
+                    self._turn.info["path"] = "coder"
                 content = result.get("text") or result.get("error", "")
                 if channel == "voice" and result.get("diff"):  # don't read a diff out loud
                     content = (f"I've got a fix ready for {', '.join(result['files'])} — {result['lines']} lines. "
@@ -329,6 +382,8 @@ class Agent:
             from .coding import answer as code_answer, is_code_question
 
             if is_code_question(user_text):  # coding questions go to the code model
+                if self._turn is not None:
+                    self._turn.info["path"] = "coder"
                 try:
                     content = code_answer(user_text, voice=channel == "voice", history=history[:-1])
                 except LLMError as e:
@@ -366,7 +421,7 @@ class Agent:
 
         item = pocket.pop_pending(self.db)
         if pocket.YES_RE.match(user_text.strip()):
-            out = self.chat([{"role": "user", "content": item["text"]}], channel=channel)
+            out = self.chat([{"role": "user", "content": item["text"]}], channel=channel, turn=self._turn)
             content, calls = out["content"], out["tool_calls"]
         else:
             content, calls = "Okay, skipped.", []
@@ -392,7 +447,7 @@ class Agent:
             for c in calls:
                 fn = c.get("function", {})
                 name, args = fn.get("name", ""), fn.get("arguments", {})
-                result = tools.call(name, args)
+                result = self._call_tool(name, args)
                 log.info("tool %s(%s) -> %s", name, args, result[:200])
                 round_trace.append({"name": name, "arguments": args, "result": json.loads(result)})
                 convo.append({"role": "tool", "content": result, "tool_name": name})
@@ -415,19 +470,33 @@ class Agent:
     def _model_turn(self, llm: Any, convo: list[dict[str, Any]], model: str | None,
                     schemas: list[dict[str, Any]]) -> dict[str, Any]:
         """One model call. When streaming, text is passed on as it arrives."""
-        if not self._on_text or not hasattr(llm, "stream_chat"):
-            return llm.chat(convo, model=model, tools=schemas)
-        content, calls, streamed = [], [], False
-        for event in llm.stream_chat(convo, model=model, tools=schemas):
-            if event.get("tool_calls"):
-                calls += event["tool_calls"]
-            elif event.get("content"):
-                content.append(event["content"])
-                if not calls:
-                    self._on_text(event["content"])
-                    streamed = True
-        return {"role": "assistant", "content": "".join(content), "tool_calls": calls,
-                "_streamed": streamed and not calls}
+        turn = getattr(self, "_turn", None)
+        if turn:
+            turn.info["model_calls"] += 1
+            turn.info["model"] = model or settings.chat_model
+        started = time.monotonic()
+        try:
+            if not self._on_text or not hasattr(llm, "stream_chat"):
+                msg = llm.chat(convo, model=model, tools=schemas)
+                if turn:
+                    turn.mark("first_token")
+                return msg
+            content, calls, streamed = [], [], False
+            for event in llm.stream_chat(convo, model=model, tools=schemas):
+                if turn:
+                    turn.mark("first_token")
+                if event.get("tool_calls"):
+                    calls += event["tool_calls"]
+                elif event.get("content"):
+                    content.append(event["content"])
+                    if not calls:
+                        self._on_text(event["content"])
+                        streamed = True
+            return {"role": "assistant", "content": "".join(content), "tool_calls": calls,
+                    "_streamed": streamed and not calls}
+        finally:
+            if turn:
+                turn.add("model", (time.monotonic() - started) * 1000)
 
     def _log(self, channel: str, user_text: str, reply: str) -> None:
         ts = now_iso()

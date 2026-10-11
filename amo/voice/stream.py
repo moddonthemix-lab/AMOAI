@@ -13,19 +13,31 @@ from ..config import settings
 
 
 def spoken_reply(history: list[dict[str, Any]], text: str, channel: str = "voice",
-                 agent_chat=None) -> Iterator[tuple[str, str, bytes]]:
+                 agent_chat=None, turn: Any = None) -> Iterator[tuple[str, str, bytes]]:
+    """turn: a perf.Turn to time (speech-to-text added by the caller); saved when the reply ends."""
     from ..agent import Agent
     from ..llm import LLMError
     from . import acks
     from .speaker import split_ready
     from .tts import synthesize
 
+    from ..perf import Turn
+
     pieces: queue.Queue = queue.Queue()
     chat = agent_chat or Agent().chat
+    turn = turn or Turn(channel, text)
+
+    def speak(sentence: str) -> bytes:
+        if "first_audio" in turn.marks:
+            return synthesize(sentence)
+        with turn.timer("tts"):
+            wav = synthesize(sentence)
+        turn.mark("first_audio")
+        return wav
 
     def think() -> None:
         try:
-            reply = chat(history, channel=channel, on_text=pieces.put)["content"]
+            reply = chat(history, channel=channel, on_text=pieces.put, turn=turn)["content"]
             pieces.put(("done", reply))
         except LLMError as e:
             pieces.put(f"Sorry, I couldn't do that: {e}")
@@ -51,10 +63,11 @@ def spoken_reply(history: list[dict[str, Any]], text: str, channel: str = "voice
             continue
         if isinstance(item, tuple):
             if buf.strip():
-                yield "sentence", buf.strip(), synthesize(buf.strip())
+                yield "sentence", buf.strip(), speak(buf.strip())
+            turn.save()
             yield "done", item[1], b""
             return
         ready, buf = split_ready(buf + item)
         for sentence in ready:
             said_any = True
-            yield "sentence", sentence, synthesize(sentence)
+            yield "sentence", sentence, speak(sentence)

@@ -313,6 +313,14 @@ def face_events(after: int = -1):
     return {"events": events, "last": events[-1]["id"] if events else after, "now": int(time.time() * 1000)}
 
 
+@app.get("/api/stats", dependencies=[Depends(auth)])
+def stats(days: int = 7):
+    """The speed report: where the time goes, slowest requests, what would help."""
+    from ..perf import report
+
+    return report(get_db(), days)
+
+
 @app.get("/api/timers", dependencies=[Depends(auth)])
 def timers_active():
     """Running timers and upcoming reminders (the face shows them as countdown chips)."""
@@ -441,13 +449,13 @@ def pocket_clip(clip_id: str):
     return Response(wav, media_type="audio/wav")
 
 
-def _pocket_stream(history: list[dict[str, Any]], text: str):
+def _pocket_stream(history: list[dict[str, Any]], text: str, turn: Any = None):
     """Speak the reply as raw 16 kHz PCM, sentence by sentence (the pet plays it as it arrives)."""
     from .. import face, pocket
     from ..voice.stream import spoken_reply
 
     face.publish_state("thinking")
-    for kind, said, wav in spoken_reply(history, text):
+    for kind, said, wav in spoken_reply(history, text, turn=turn):
         if kind == "done":
             break
         face.publish_say(said, wav)
@@ -462,15 +470,20 @@ async def pocket_talk(request: Request):
     from ..voice.listen import vocab
     from ..voice.stt import VoiceUnavailable, transcribe
 
+    from ..perf import Turn
+
     audio = await request.body()
+    started = time.monotonic()
     try:
         text = (await run_in_threadpool(transcribe, audio, "en", None, vocab())).strip()
     except VoiceUnavailable as e:
         raise HTTPException(503, str(e)) from e
     if not text:
         raise HTTPException(422, "didn't catch that")
+    turn = Turn("voice", text, started=started)
+    turn.add("stt", (time.monotonic() - started) * 1000)
     face.publish_heard(text)
-    return StreamingResponse(_pocket_stream([{"role": "user", "content": text}], text),
+    return StreamingResponse(_pocket_stream([{"role": "user", "content": text}], text, turn),
                              media_type="application/octet-stream", headers={"X-AMO-Rate": "16000",
                                                                              "X-AMO-Heard": text[:200].encode("ascii", "ignore").decode()})
 
