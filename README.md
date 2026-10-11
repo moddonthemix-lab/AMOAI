@@ -210,6 +210,22 @@ amo try-voice computer     # Obadiah with a robotic edge
 amo voices --all           # every Piper English voice
 amo set-voice amo          # back to AMO's voice
 ```
+**Personality: mood.** AMO adapts to how you're doing. Its baseline is chill ("Bet. Booked Lil Jay
+for Friday at 7."), and each turn it reads the moment:
+
+| Mood | When | How AMO talks |
+|---|---|---|
+| chill | normal | laid-back, short, a little slang |
+| hype | you're celebrating, or green on trades today | upbeat, celebrates the win, keeps momentum |
+| steady | you sound stressed/tired, or red on trades today | calm, supportive, brief, takes things off your plate |
+| firm | you broke a trading rule today | calm but straight, holds you to your rules |
+| quiet | late at night | low-key, as few words as possible |
+
+It's built to grow (amo/mood.py) — more signals and moods can be added later. Switch any time:
+```sh
+amo personality            # show the current one
+amo personality computer   # dry, sarcastic British wit   (also: chill, jarvis, default, mood)
+```
 Without Piper installed, AMO falls back to the Mac's built-in British voice "Daniel".
 
 ### Picking a model (Apple Silicon, by unified memory)

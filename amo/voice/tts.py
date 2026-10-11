@@ -54,7 +54,7 @@ class VoiceStyle:
 
 PRESETS: dict[str, VoiceStyle] = {
     # AMO's voice (for now): the BMO voice from brenpoly/be-more-agent, slightly steadied.
-    "amo": VoiceStyle("bmo", ("Samantha", "Alex"), personality="computer", noise=0.5, noise_w=0.6),
+    "amo": VoiceStyle("bmo", ("Samantha", "Alex"), personality="mood", noise=0.5, noise_w=0.6),
     # AMO's previous voice: Obadiah (Piper "semaine"), a deadpan British male, rendered clean.
     "obadiah": VoiceStyle("en_GB-semaine-medium:obadiah", ("Daniel", "Oliver", "Arthur"),
                           personality="computer", noise=0.35, noise_w=0.5),

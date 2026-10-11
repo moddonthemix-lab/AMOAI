@@ -206,7 +206,7 @@ def test_piper_speaker_names(tmp_path, monkeypatch):
     assert tts.speaker_id("en_GB-alan-medium") is None
 
 
-def test_amo_voice_is_bmo_with_computer_personality(monkeypatch):
+def test_amo_voice_is_bmo_with_mood_personality(monkeypatch):
     from amo.config import settings
     from amo.voice import tts
 
@@ -217,7 +217,7 @@ def test_amo_voice_is_bmo_with_computer_personality(monkeypatch):
     assert tts.piper_path("bmo").name == "bmo.onnx"
     assert tts.resolve_style("obadiah").piper == "en_GB-semaine-medium:obadiah"
     assert st.noise < 0.667 and st.noise_w < 0.8
-    assert tts.active_personality() == "computer"
+    assert tts.active_personality() == "mood"
     monkeypatch.setattr(settings, "personality", "jarvis")
     assert tts.active_personality() == "jarvis"
 
@@ -265,3 +265,45 @@ def test_dashboard_shows_weekly_goals_too(db):
     Goals(db).add("Make one beat")
     Goals(db).add("Post 3 reels", cadence="weekly")
     assert [g["title"] for g in dashboard(db)["goals"]] == ["Make one beat", "Post 3 reels"]
+
+
+def test_chill_personality(db, llm, monkeypatch):
+    from amo.agent import Agent
+    from amo.confirm import CHILL_OPENERS
+    from amo.config import settings
+
+    monkeypatch.setattr(settings, "personality", "chill")
+    a = Agent(db)
+    assert "laid-back" in a.build_system_prompt("hi", "voice")
+    out = a.chat([{"role": "user", "content": "add a daily goal: make one beat"}])["content"]
+    assert out.startswith(CHILL_OPENERS)
+    assert "Make one beat" in out
+
+
+def test_mood_reads_the_moment(db, llm, monkeypatch):
+    from datetime import datetime
+
+    from amo import mood
+    from amo.agent import Agent
+    from amo.config import settings
+    from amo.trading import TradingJournal
+
+    noon = datetime(2026, 10, 9, 12, 0)
+    assert mood.read("what's on today", db, noon)[0].name == "chill"
+    assert mood.read("ugh I'm so stressed today", db, noon)[0].name == "steady"
+    assert mood.read("let's go, I got paid!", db, noon)[0].name == "hype"
+    assert mood.read("what's on", db, datetime(2026, 10, 9, 23, 30))[0].name == "quiet"
+
+    tj = TradingJournal(db)
+    t = tj.open_trade("TSLA", "long", 100, quantity=10, opened_at="2026-10-09 10:00")
+    tj.close_trade(t["id"], 95, closed_at="2026-10-09 11:00")
+    m, why = mood.read("how am I doing", db, noon)
+    assert m.name == "steady" and "down $50" in why
+    db.execute("UPDATE trades SET followed_rules = 0")
+    assert mood.read("how am I doing", db, noon)[0].name == "firm"
+
+    monkeypatch.setattr(settings, "personality", "mood")
+    a = Agent(db)
+    assert 'mood is "' in a.build_system_prompt("ugh rough day", "voice")
+    out = a.chat([{"role": "user", "content": "add a daily goal: make one beat"}])["content"]
+    assert out.startswith(mood.current(db).openers) and "Make one beat" in out

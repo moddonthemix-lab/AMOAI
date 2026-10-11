@@ -20,6 +20,7 @@
   amo voices              list voice presets and the British voices on this Mac
   amo try-voice [PRESET]  hear a voice before choosing it
   amo set-voice PRESET    switch AMO's voice + personality (computer, jarvis, british-female, default)
+  amo personality NAME    switch only the personality (mood, chill, computer, jarvis, default)
   amo brief               print today's brief
   amo learn               extract facts from recent conversations now
   amo reflect             run the weekly reflection now
@@ -494,6 +495,21 @@ def cmd_set_voice(a):
     _restart_server()
 
 
+def cmd_personality(a):
+    from .agent import PERSONALITIES
+    from .voice.tts import active_personality
+
+    if not a.name:
+        print(f"personality: {active_personality()}   (options: {', '.join(PERSONALITIES)})")
+        return
+    if a.name not in PERSONALITIES:
+        print("unknown personality. Options: " + ", ".join(PERSONALITIES))
+        sys.exit(1)
+    _set_env("AMO_PERSONALITY", a.name)
+    print(f"personality: {a.name}")
+    _restart_server()
+
+
 def cmd_remember(a):
     from .memory import Memory
 
@@ -628,6 +644,9 @@ def main(argv: list[str] | None = None) -> None:
     sv.add_argument("preset")
     sv.add_argument("--keep-personality", action="store_true", help="change only the voice")
     sv.set_defaults(fn=cmd_set_voice)
+    pe = sub.add_parser("personality", help="show or switch AMO's personality")
+    pe.add_argument("name", nargs="?")
+    pe.set_defaults(fn=cmd_personality)
 
     sub.add_parser("brief", help="print today's brief").set_defaults(fn=cmd_brief)
     sub.add_parser("learn", help="learn from recent conversations now").set_defaults(fn=cmd_learn)

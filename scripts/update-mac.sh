@@ -65,6 +65,11 @@ if [[ ! -f data/.voice-bmo ]]; then
   .venv/bin/amo set-voice amo >/dev/null 2>&1 || true
   mkdir -p data && touch data/.voice-amo data/.voice-bmo
 fi
+# One-time: AMO's personality is now "mood" — adapts to how you're doing (amo personality NAME to change).
+if [[ ! -f data/.personality-mood ]]; then
+  .venv/bin/amo personality mood >/dev/null 2>&1 || true
+  mkdir -p data && touch data/.personality-mood
+fi
 echo "  fetching AMO's voice (first time only, ~64 MB)…"
 .venv/bin/python -c "from amo.voice.tts import download_piper_voice; download_piper_voice('bmo')" 2>/dev/null \
   || echo "  couldn't download the voice now — AMO will fetch it the first time it speaks"

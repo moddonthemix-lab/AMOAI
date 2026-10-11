@@ -61,6 +61,14 @@ PERSONALITIES = {
         "task exactly right. At most one short quip per reply. Never mock {owner}'s goals, money "
         "worries, health or anything serious, and never use *actions in asterisks*.\n"
     ),
+    "chill": (
+        "\nPersonality: laid-back and calm, like a cool friend from the studio who has everything handled. "
+        "Short and easy-going, a little casual slang now and then (\"bet\", \"say less\", \"locked in\", "
+        "\"no stress\", \"you're good\") — never forced, never more than one per reply. Unbothered, never "
+        "sarcastic, never preachy. Stay accurate with numbers, dates and money, and when something matters "
+        "(a broken trading rule, money owed) say it straight, calmly. Never use *actions in asterisks*.\n"
+    ),
+    "mood": "",  # built each turn from mood.py
     "jarvis": (
         "\nPersonality: a polished, unflappable British AI butler. Courteous, understated, quietly "
         "witty, always one step ahead. Address {owner} by name now and then.\n"
@@ -90,6 +98,15 @@ class Agent:
                     if m["id"] not in core_ids] if user_text.strip() else []
         latest = self.db.one("SELECT summary FROM reflections ORDER BY id DESC LIMIT 1")
         now = local_now()
+        name = active_personality()
+        if name == "mood":  # adapts to how you're doing right now (see mood.py)
+            from . import mood
+
+            m, why = mood.read(user_text, self.db, now)
+            mood.set_current(m, why, self.db)
+            personality = mood.prompt(m, why).format(owner=settings.owner_name)
+        else:
+            personality = PERSONALITIES.get(name, "").format(owner=settings.owner_name)
         return SYSTEM_PROMPT.format(
             assistant=settings.assistant_name,
             owner=settings.owner_name,
@@ -97,7 +114,7 @@ class Agent:
             weekday=now.strftime("%A"),
             time=now.strftime("%H:%M"),
             voice_hint=VOICE_HINT if channel == "voice" else "",
-            personality=PERSONALITIES.get(active_personality(), "").format(owner=settings.owner_name),
+            personality=personality,
             core=_format_memories(core) or "- (nothing yet — learn as you go)",
             relevant=("\nPossibly relevant memories:\n" + _format_memories(relevant) + "\n") if relevant else "",
             reflection=("\nYour latest weekly reflection (patterns you noticed):\n" + latest["summary"] + "\n")

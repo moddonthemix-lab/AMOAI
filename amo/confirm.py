@@ -24,6 +24,10 @@ COMPUTER_QUIPS = (
 )
 
 
+# Easy openers for the "chill" personality's instant confirmations.
+CHILL_OPENERS = ("Bet.", "Say less.", "Locked in.", "You're good.", "Got you.", "Easy.")
+
+
 def _money(v: Any) -> str:
     try:
         f = float(v)
@@ -171,6 +175,13 @@ def instant_reply(calls: list[dict[str, Any]]) -> str | None:
     reply = " ".join(lines)
     from .voice.tts import active_personality
 
-    if active_personality() == "computer":
+    personality = active_personality()
+    if personality == "computer":
         reply += " " + random.choice(COMPUTER_QUIPS)
+    elif personality == "chill":
+        reply = random.choice(CHILL_OPENERS) + " " + reply
+    elif personality == "mood":
+        from .mood import opener
+
+        reply = opener() + " " + reply
     return reply
