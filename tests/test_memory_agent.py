@@ -125,7 +125,7 @@ def test_saves_confirm_instantly_without_second_model_pass(db, llm):
 
 def test_questions_still_get_a_model_answer(db, llm):
     llm.script(tool_call("revenue", period="month"), {"role": "assistant", "content": "You're at $0 this month."})
-    out = Agent(db).chat([{"role": "user", "content": "how much did I make this month"}])
+    out = Agent(db).chat([{"role": "user", "content": "am I making more than last month, and why?"}])
     assert len(llm.calls) == 2 and out["content"] == "You're at $0 this month."
 
 

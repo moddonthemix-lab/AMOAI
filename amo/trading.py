@@ -24,6 +24,8 @@ def _pnl(t: dict[str, Any]) -> float | None:
         return None
     direction = 1 if t["side"] == "long" else -1
     mult = t.get("multiplier") or 1
+    if mult == 1:  # saved without one (an old row, or added by hand): go by the symbol
+        mult = multiplier(t.get("symbol") or "")
     return round((t["exit"] - t["entry"]) * direction * t["quantity"] * mult - (t["fees"] or 0), 2)
 
 

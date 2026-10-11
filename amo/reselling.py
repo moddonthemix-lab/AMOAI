@@ -48,6 +48,12 @@ class Reselling:
                 raise ValueError(f"no item with id {item}")
             return row
         matches = [m for m in self.find(str(item)) if m["status"] != "sold"] or self.find(str(item))
+        if not matches:  # forgiving: "the Jordan 4s" → "Jordan 4 Bred size 10"
+            from .shortcuts import _covers
+
+            rows = self.db.all("SELECT * FROM resale_items ORDER BY bought_at DESC")
+            matches = ([m for m in rows if m["status"] != "sold" and _covers(str(item), m["name"])]
+                       or [m for m in rows if _covers(str(item), m["name"])])
         if len(matches) == 1:
             return self.get(matches[0]["id"])
         if not matches:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 from typing import Any
 
@@ -47,6 +48,13 @@ class Goals:
                            (f"%{goal}%",))
         if len(rows) == 1:
             return self.get(rows[0]["id"])
+        if not rows:  # forgiving: "gym goal", "the beats" → by words
+            from .shortcuts import _covers
+
+            want = re.sub(r"\s+goal$", "", str(goal).strip(), flags=re.I)
+            rows = [r for r in self.db.all("SELECT id, title FROM goals WHERE active = 1") if _covers(want, r["title"])]
+            if len(rows) == 1:
+                return self.get(rows[0]["id"])
         if not rows:
             raise ValueError(f"no active goal matching {goal!r}")
         raise ValueError(f"{goal!r} is ambiguous: " + ", ".join(f"{r['title']} (#{r['id']})" for r in rows))

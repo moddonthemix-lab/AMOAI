@@ -53,7 +53,7 @@ def test_agent_streams_answers_but_not_unverified_actions(db, llm):
 
     pieces = []
     llm.script({"role": "assistant", "content": "You have two sessions today. Jay at seven."})
-    out = Agent(db).chat([{"role": "user", "content": "what's on today?"}], on_text=pieces.append)
+    out = Agent(db).chat([{"role": "user", "content": "anything I should know about today?"}], on_text=pieces.append)
     assert len(pieces) > 3 and "".join(pieces) == out["content"]       # streamed word by word
 
     pieces.clear()
@@ -79,7 +79,7 @@ def test_converse_streams_ack_then_sentences(db, llm, monkeypatch):
     llm.script({"role": "assistant", "content": "You have two sessions today. Jay is at seven. Ana is at nine."})
     app.state.run_scheduler = False
     with TestClient(app) as c:
-        lines = [json.loads(x) for x in c.post("/api/converse", json={"text": "what's on today?"}).text.splitlines()]
+        lines = [json.loads(x) for x in c.post("/api/converse", json={"text": "anything I should know about today?"}).text.splitlines()]
     kinds = [x["type"] for x in lines]
     assert kinds[0] == "ack" and kinds[-1] == "done" and kinds.count("sentence") == 3
     assert base64.b64decode(lines[1]["wav"]) == b"WAV:You have two sessions today."

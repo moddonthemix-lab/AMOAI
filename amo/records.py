@@ -316,6 +316,8 @@ def resolve(kind: str, item: int | str | None, db: Database | None = None, fuzzy
     db = db or get_db()
     ent = entity(kind)
     ref = str(item or "").strip().strip(" .,!?;:\"'“”").lstrip("#")
+    if ref.lower().endswith(" " + ent.label.lower()):  # "gym goal" → "gym"
+        ref = ref[: -len(ent.label) - 1].strip()
     if ref.isdigit():
         row = get(ent.kind, int(ref), db)
         if not row:

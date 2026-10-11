@@ -22,9 +22,9 @@ def test_model_cases_and_failure_reasons(db, llm):
     llm.script(tool_call("add_goal", title="Call mom"), {"role": "assistant", "content": "Added."})
     llm.script({"role": "assistant", "content": "Sure, I've added that for you!"},  # claims, never saves
                {"role": "assistant", "content": "Done!"})
-    cases = [evals.Case(say="can you put calling my mom on my daily goals", tool=["add_goal"], args={"title": "mom"},
+    cases = [evals.Case(say="I want to call my mom more, make it a daily thing", tool=["add_goal"], args={"title": "mom"},
                         tags=["ai"]),
-             evals.Case(say="put stretching on my goals", tool=["add_goal"], tags=["ai"])]
+             evals.Case(say="I want to stretch more, track that for me", tool=["add_goal"], tags=["ai"])]
     s = evals.run(cases=cases)
     assert [r["ok"] for r in s["results"]] == [True, False]
     assert "expected add_goal, got no tool" in s["failures"][0]["why"][0]

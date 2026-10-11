@@ -71,15 +71,23 @@ def schemas(names: list[str] | None = None) -> list[dict[str, Any]]:
     return [t.schema() for n, t in REGISTRY.items() if names is None or n in names]
 
 
+_JUNK = {"null", "none", "nil", "n/a", "na", "never", "undefined", "unknown", "not specified", "-", "?"}
+
+
 def _coerce(value: Any, ptype: str) -> Any:
-    """Small models often send numbers as strings; fix that up."""
-    if value is None:
+    """Small models often send numbers as strings, or "null"/"never" for things they don't know; fix
+    that up. Returns None for a value that should be treated as not given."""
+    if value is None or (isinstance(value, str) and value.strip().lower() in _JUNK):
         return None
     try:
-        if ptype == "number":
-            return float(str(value).replace("$", "").replace(",", ""))
-        if ptype == "integer":
-            return int(float(str(value)))
+        if ptype in ("number", "integer"):
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return int(value) if ptype == "integer" else float(value)
+            m = re.search(r"-?\d[\d,]*(?:\.\d+)?", str(value))  # "$150", "150 dollars", "about 50"
+            if not m:
+                return None  # not a number: leave it out rather than crash on it later
+            num = float(m.group(0).replace(",", ""))
+            return int(num) if ptype == "integer" else num
         if ptype == "object" and isinstance(value, str):
             return json.loads(value)
         if ptype == "boolean":
@@ -104,6 +112,7 @@ def call(name: str, arguments: dict[str, Any] | str | None) -> str:
         return json.dumps({"error": "arguments must be a JSON object"})
     args = {k: _coerce(v, t.params[k][0]) for k, v in (arguments or {}).items()
             if k in t.params and v not in ("", None)}
+    args = {k: v for k, v in args.items() if v is not None}
     missing = [p for p, (_, _, req) in t.params.items() if req and p not in args]
     if missing:
         return json.dumps({"error": f"missing required argument(s): {', '.join(missing)}"})

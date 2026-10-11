@@ -213,12 +213,15 @@
   ]
  },
  {
-  "say": "delete all my daily goals",
+  "say": "yes, delete them",
   "tool": "delete_all_records",
   "sql": "SELECT COUNT(*) FROM goals WHERE active = 1",
   "sql_equals": 0,
   "tags": [
    "goals"
+  ],
+  "before": [
+   "delete all my daily goals"
   ]
  },
  {

@@ -355,7 +355,12 @@ class Agent:
                 result = json.loads(self._call_tool("strat_analysis", {"symbol": result["symbol"]}))
                 name = "strat_analysis"
             content = instant_reply([{"name": name, "arguments": args, "result": result}]) or ""
+            from .shortcuts import SAY
+
             if content:
+                trace.append({"name": name, "arguments": args, "result": result})
+            elif name in SAY and not (isinstance(result, dict) and "error" in result):
+                content = SAY[name](result, args)  # "what are my goals" — read straight from your data
                 trace.append({"name": name, "arguments": args, "result": result})
             elif name == "search_knowledge":
                 if result.get("hits"):  # let the model answer from your files
@@ -450,8 +455,11 @@ class Agent:
 
         if fastpath.TEXT_RE.match(text.strip()):
             return fastpath.match(text)
+        from .shortcuts import match as data_match
+
         return (timer_match(text, local_now()) or pronounce_match(text, last_reply) or preference_match(text)
-                or notes_match(text) or code_match(text) or knowledge_match(text) or fastpath.match(text))
+                or notes_match(text) or code_match(text) or data_match(text, self.db) or knowledge_match(text)
+                or fastpath.match(text))
 
     def _offline_answer(self, user_text: str, channel: str, on_text: Callable[[str], None] | None) -> dict[str, Any]:
         from . import pocket
