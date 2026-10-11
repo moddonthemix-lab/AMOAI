@@ -113,6 +113,11 @@ def test_hardware_commands_are_confirmed(db, llm, desk):
     assert hardware.read("temperature", db)["value"] == 22.5
     with pytest.raises(ValueError):
         hardware.command("temp", "on", db=db)  # sensors are read-only
+    assert hardware.command("fan", "set", "off", db=db, wait=0)["action"] == "off"  # set → off, not a toggle
+    with pytest.raises(ValueError, match="what angle"):
+        hardware.command("head", "set", None, db=db)
+    with pytest.raises(ValueError):
+        hardware.command("fan", "explode", db=db)
 
 
 def test_hardware_offline_and_unknown(db, llm):
@@ -120,7 +125,12 @@ def test_hardware_offline_and_unknown(db, llm):
     db.execute("UPDATE hw_devices SET last_seen = '2020-01-01T00:00:00'")
     r = hardware.command("door", "on", db=db)
     assert r["done"] is False and r["status"] == "pending"
-    assert hardware.poll("garage", db=db)[0]["action"] == "on"  # delivered when it reconnects
+    assert hardware.poll("garage", db=db)[0]["action"] == "on"  # delivered when it reconnects soon
+    hardware.command("door", "off", db=db)
+    db.execute("UPDATE hw_commands SET created_at = '2020-01-01T00:00:00' WHERE status = 'pending'")
+    assert hardware.poll("garage", db=db) == []  # …but not hours later
+    with pytest.raises(ValueError, match="don't have a device"):
+        hardware.command("gar", "on", db=db)  # sensitive parts are never guessed from part of a name
     # not a device → falls through to the model instead of claiming anything
     llm.script({"role": "assistant", "content": "Alerts are off."})
     assert Agent(db).chat([{"role": "user", "content": "turn off the alerts"}])["content"] == "Alerts are off."

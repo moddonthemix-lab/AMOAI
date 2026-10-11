@@ -95,12 +95,16 @@ def learn_from_conversations(db: Database | None = None, batch: int = 30) -> lis
             fmt="json",
             options={"temperature": 0},
         )
-        facts = _parse_json(msg.get("content", "")).get("facts", [])
+        data = _parse_json(msg.get("content", ""))
+        facts = data.get("facts", []) if isinstance(data, dict) else []
         added = []
-        for f in facts:
-            if isinstance(f, dict) and f.get("content"):
-                m = mem.add(f["content"], f.get("category", "general"),
-                            int(f.get("importance", 3) or 3), source="chat")
+        for f in facts if isinstance(facts, list) else []:
+            if isinstance(f, dict) and isinstance(f.get("content"), str) and f["content"].strip():
+                try:
+                    importance = max(1, min(5, int(float(f.get("importance") or 3))))
+                except (TypeError, ValueError):  # "high", "4/5"…
+                    importance = 3
+                m = mem.add(f["content"], str(f.get("category") or "general"), importance, source="chat")
                 if not m.get("duplicate"):
                     added.append(m)
         ids = [r["id"] for r in rows]
@@ -146,17 +150,20 @@ def weekly_reflection(db: Database | None = None) -> dict[str, Any]:
         options={"temperature": 0.3},
     )
     data = _parse_json(msg.get("content", ""))
-    summary = data.get("summary", "").strip()
+    data = data if isinstance(data, dict) else {}
+    summary = data.get("summary") or ""
     if isinstance(summary, list):
         summary = "\n".join(f"- {s}" for s in summary)
+    summary = str(summary).strip()
     rid = db.insert("reflections", {"period_start": start.isoformat(), "period_end": end.isoformat(),
                                     "summary": summary, "created_at": now_iso()})
     mem = Memory(db)
-    for insight in data.get("insights", [])[:5]:
+    insights = data.get("insights") if isinstance(data.get("insights"), list) else []
+    for insight in insights[:5]:
         if isinstance(insight, str) and insight.strip():
             mem.add(insight, "general", 3, source="reflection")
     decayed = decay_memories(db)
-    return {"id": rid, "summary": summary, "insights": data.get("insights", []), "decayed": decayed}
+    return {"id": rid, "summary": summary, "insights": insights, "decayed": decayed}
 
 
 def decay_memories(db: Database | None = None, days: int = 120) -> int:

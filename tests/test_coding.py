@@ -194,3 +194,23 @@ def test_a_fix_is_not_applied_if_the_file_changed(db, llm, project, monkeypatch)
     with pytest.raises(ValueError, match="changed since"):
         coding.apply_pending(db)
     assert "# my own edit" in (project / "amo" / "calc.py").read_text()
+
+
+def test_self_repair_sandbox_has_what_the_tests_need(project):
+    (project / "evals").mkdir()
+    (project / "evals" / "cases.json").write_text("[]")
+    box = selfrepair._sandbox(project)
+    try:
+        assert (box / "evals" / "cases.json").is_file() and (box / "amo" / "calc.py").is_file()
+    finally:
+        import shutil
+
+        shutil.rmtree(box)
+
+
+def test_self_repair_never_replays_outside_actions(tmp_path):
+    for tool in ("send_text", "hardware_control", "code_apply", "self_rollback", "send_notification"):
+        assert not selfrepair.can_replay(tool)
+        fixed, why = selfrepair.reproduce(tmp_path, {"tool": tool, "args": {}})
+        assert fixed and "not replayed" in why
+    assert selfrepair.can_replay("finance_summary")

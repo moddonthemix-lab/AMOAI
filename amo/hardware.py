@@ -35,6 +35,9 @@ from typing import Any
 from .db import Database, get_db, local_now, now_iso
 
 ONLINE_SECONDS = 60
+EXPIRE_SECONDS = 120  # a command an offline device hasn't picked up by then is dropped (no garage door at 3am)
+# Parts that must be named exactly — never picked by a partial match.
+SENSITIVE = re.compile(r"\b(?:lock|door|garage|gate|relay|oven|stove|heater|alarm|valve)\b")
 TYPES = {"switch", "rgb", "servo", "motor", "buzzer", "display", "sensor"}
 COLOURS = {
     "red": "#ff0000", "green": "#00ff00", "blue": "#0000ff", "white": "#ffffff", "warm white": "#ffb46b",
@@ -96,8 +99,10 @@ def resolve(target: str, db: Database | None = None) -> tuple[dict[str, Any], di
                      _norm(f"{d['name']} {p['name']}"), _norm(f"{p['name']} {d['name']}")}
             if want in names:
                 found.append((3, d, p))
-            elif any(n and (n in want or want in n) for n in names):
-                found.append((1, d, p))
+            elif not SENSITIVE.search(" ".join(names)) and any(
+                    n and (set(n.split()) <= set(want.split()) or set(want.split()) <= set(n.split())
+                           or (p["type"] == "sensor" and (n in want or want in n))) for n in names):
+                found.append((1, d, p))  # whole words ("fan" ≠ "fancy lamp"); sensors are only read, so looser
     if not found:
         have = ", ".join(f"{p['name']} ({d['name']})" for d in devices(db) for p in d["parts"]) or "nothing yet"
         raise ValueError(f"I don't have a device called '{target}'. Connected: {have}.")
@@ -114,6 +119,13 @@ def _value_for(part: dict[str, Any], action: str, value: Any) -> tuple[str, Any]
     t = part["type"]
     if t == "sensor":
         raise ValueError(f"the {part['name']} is a sensor — I can read it, not control it")
+    if t == "switch" and action == "set":  # "set the fan to on" — a set value, never a toggle
+        v = str(value).lower().strip() if value is not None else ""
+        action = {"on": "on", "true": "on", "1": "on", "off": "off", "false": "off", "0": "off"}.get(v, "")
+        if not action:
+            raise ValueError(f"the {part['name']} can only be turned on or off")
+    if action not in ("on", "off", "toggle", "set", "brightness"):
+        raise ValueError(f"I can't '{action}' the {part['name']}")
     if action in ("on", "off", "toggle"):
         if t in ("servo", "display", "buzzer"):
             raise ValueError(f"the {part['name']} can't be switched {action}")
@@ -128,10 +140,12 @@ def _value_for(part: dict[str, Any], action: str, value: Any) -> tuple[str, Any]
         if m:
             return "brightness", max(0, min(100, int(m.group(1))))
         raise ValueError(f"what colour? (e.g. {', '.join(list(COLOURS)[:6])})")
-    if t == "servo":
-        return "set", max(0, min(180, int(float(value))))
-    if t == "motor":
-        return "set", max(-100, min(100, int(float(value))))
+    if t in ("servo", "motor"):
+        try:
+            num = int(float(value))
+        except (TypeError, ValueError):
+            raise ValueError(f"what {'angle' if t == 'servo' else 'speed'} for the {part['name']}?") from None
+        return "set", max(0, min(180, num)) if t == "servo" else max(-100, min(100, num))
     if t == "buzzer":
         return "set", value or "beep"
     if t == "display":
@@ -151,7 +165,8 @@ def command(target: str, action: str = "set", value: Any = None, db: Database | 
             "command_id": cid}
     if not dev["online"]:
         return {**base, "done": False, "status": "pending",
-                "note": f"{dev['name']} is offline — it'll do it when it reconnects"}
+                "note": f"{dev['name']} is offline — it'll do it if it's back within {EXPIRE_SECONDS // 60} minutes, "
+                        "otherwise I'll drop it"}
     deadline = time.monotonic() + wait
     while time.monotonic() < deadline:
         row = db.one("SELECT status, result FROM hw_commands WHERE id = ?", (cid,))
@@ -175,13 +190,18 @@ def poll(device: str, wait: float = 0, db: Database | None = None) -> list[dict[
     db = db or get_db()
     name = device.strip().lower()
     deadline = time.monotonic() + max(0.0, min(wait, 30.0))
+    db.execute("UPDATE hw_devices SET last_seen = ? WHERE name = ?", (now_iso(), name))
+    stale = (local_now() - timedelta(seconds=EXPIRE_SECONDS)).isoformat()
+    db.execute("UPDATE hw_commands SET status = 'expired' WHERE device = ? AND status = 'pending' AND created_at < ?",
+               (name, stale))
     while True:
-        db.execute("UPDATE hw_devices SET last_seen = ? WHERE name = ?", (now_iso(), name))
         rows = db.all("SELECT id, part, action, value FROM hw_commands WHERE device = ? AND status = 'pending' "
                       "ORDER BY id", (name,))
         if rows or time.monotonic() >= deadline:
             break
         time.sleep(0.2)
+    if wait:  # still here after the long wait
+        db.execute("UPDATE hw_devices SET last_seen = ? WHERE name = ?", (now_iso(), name))
     if rows:
         marks = ",".join("?" * len(rows))
         db.execute(f"UPDATE hw_commands SET status = 'sent' WHERE id IN ({marks})", tuple(r["id"] for r in rows))

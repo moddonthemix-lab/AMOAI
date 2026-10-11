@@ -113,7 +113,7 @@ def run_tests(project: Path, timeout: int = 900) -> tuple[bool, str]:
 
 def _sandbox(project: Path) -> Path:
     tmp = Path(tempfile.mkdtemp(prefix="amo-repair-"))
-    for part in ("amo", "tests"):
+    for part in ("amo", "tests", "evals"):  # everything the test suite reads
         if (project / part).is_dir():
             shutil.copytree(project / part, tmp / part, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     for f in ("pyproject.toml", "conftest.py"):
@@ -131,8 +131,18 @@ sys.exit(1 if bad else 0)
 """
 
 
+# Replaying these would reach the real world (texts, phone pushes, devices, camera, code) — never replayed.
+NO_REPLAY = {"send_text", "send_notification", "hardware_control", "look", "speak", "announce"}
+
+
+def can_replay(tool: str) -> bool:
+    return tool not in NO_REPLAY and not tool.startswith(("code_", "self_"))
+
+
 def reproduce(box: Path, repro: dict[str, Any], db_path: str | None = None) -> tuple[bool, str]:
     """Replay the request that crashed, in the sandbox, on a copy of your data. (fixed?, output)"""
+    if not can_replay(repro.get("tool", "")):
+        return True, f"not replayed ({repro.get('tool')} reaches outside AMO) — the tests decide"
     data = box / "data"
     data.mkdir(exist_ok=True)
     live = Path(db_path or settings.db_path)
@@ -147,7 +157,7 @@ def reproduce(box: Path, repro: dict[str, Any], db_path: str | None = None) -> t
             src.close()
             dst.close()
     env = {**os.environ, "PYTHONPATH": str(box), "AMO_DB_PATH": str(copy), "AMO_ENV_FILE": "/nonexistent",
-           "PYTHONDONTWRITEBYTECODE": "1"}
+           "PYTHONDONTWRITEBYTECODE": "1", "AMO_NTFY_URL": "", "AMO_CALENDAR_URLS": ""}
     try:
         r = subprocess.run([sys.executable, "-c", REPRO, repro["tool"], json.dumps(repro.get("args") or {})],
                            cwd=box, env=env, capture_output=True, text=True, timeout=120)
@@ -166,7 +176,7 @@ def repair(error: dict[str, Any], db: Database | None = None, project: Path = PR
            coder: Callable[[str], str] | None = None, tests: Callable[[Path], tuple[bool, str]] = run_tests,
            restart: bool = True) -> dict[str, Any]:
     """Try to fix one recorded error. Returns {"result": applied|tests_failed|no_fix|ignored|paused, ...}."""
-    from .coding import EDIT_RULES, ask_coder, changed_lines, diff, parse_edits, preview
+    from .coding import EDIT_RULES, ask_coder, changed_lines, diff, fingerprint, parse_edits, preview
 
     db = db or get_db()
     project = project.resolve()
@@ -201,6 +211,7 @@ def repair(error: dict[str, Any], db: Database | None = None, project: Path = PR
         new = preview(project, edits)
     except ValueError as e:
         return done("no_fix", str(e))
+    before = fingerprint(project, new)
     d = diff(project, new)
     if changed_lines(d) > MAX_CHANGED_LINES:
         return done("no_fix", f"the fix was too big ({changed_lines(d)} lines)", d)
@@ -222,7 +233,9 @@ def repair(error: dict[str, Any], db: Database | None = None, project: Path = PR
     if not ok:
         return done("tests_failed", out, d)
 
-    # 4. apply, keeping a snapshot to roll back to
+    # 4. apply, keeping a snapshot to roll back to — unless the file changed while the tests ran
+    if fingerprint(project, new) != before:
+        return done("no_fix", "the file changed while I was testing the fix, so I left it alone", d)
     snap = SNAPSHOTS / local_now().strftime("%Y%m%d-%H%M%S")
     for f, text in new.items():
         (snap / f).parent.mkdir(parents=True, exist_ok=True)

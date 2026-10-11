@@ -81,9 +81,13 @@ class Part:
                 self.dev.color = (r * k, g * k, b * k)
             self.value = colour
         elif t == "servo":
+            if value is None:
+                raise ValueError("what angle?")
             if self.dev:
                 self.dev.angle = float(value)
             self.value = int(value)
+        elif t in ("motor", "display"):  # not wired up on the Pi agent yet — say so, don't pretend
+            raise ValueError(f"{t} parts aren't supported by this agent yet")
         elif t == "buzzer":
             if self.dev:
                 self.dev.beep(0.1, 0.1, n=2)

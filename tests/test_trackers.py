@@ -91,3 +91,16 @@ def test_weekly_goal_streak_and_checkins_add_up(db):
     g.check_in(daily["id"], value=2)
     g.check_in(daily["id"], value=3)
     assert db.one("SELECT value FROM goal_checkins WHERE goal_id = ?", (daily["id"],))["value"] == 5
+
+
+def test_payments_for_a_client_pay_off_their_sessions(db):
+    crm = StudioCRM(db)
+    crm.add_client("Ana")
+    day = (today() - timedelta(days=3)).isoformat()
+    a = crm.book_session("Ana", f"{day} 12:00", hours=2, rate=50)
+    b = crm.book_session("Ana", f"{day} 18:00", hours=1, rate=50)
+    crm.complete_session(a["id"])
+    crm.complete_session(b["id"])
+    db.insert("payments", {"client_id": a["client_id"], "amount": 120, "paid_at": day})
+    left = crm.unpaid_sessions()
+    assert [(s["id"], s["paid"]) for s in left] == [(b["id"], 20)]  # the first session is paid off

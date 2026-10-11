@@ -193,11 +193,24 @@ class StudioCRM:
         return self.db.one("SELECT * FROM payments WHERE id = ?", (pid,))
 
     def unpaid_sessions(self) -> list[dict[str, Any]]:
-        return self.db.all(
-            "SELECT s.id, s.starts_at, c.name AS client_name, (s.hours * s.rate) AS total, "
+        """Completed sessions not fully paid. Payments recorded for the client (not a session) pay off
+        their oldest sessions first."""
+        rows = self.db.all(
+            "SELECT s.id, s.client_id, s.starts_at, c.name AS client_name, (s.hours * s.rate) AS total, "
             "COALESCE((SELECT SUM(amount) FROM payments p WHERE p.session_id = s.id), 0) AS paid "
             "FROM studio_sessions s JOIN clients c ON c.id = s.client_id "
-            "WHERE s.status = 'completed' AND s.rate > 0 "
-            "AND (s.hours * s.rate) > COALESCE((SELECT SUM(amount) FROM payments p WHERE p.session_id = s.id), 0) "
-            "ORDER BY s.starts_at"
+            "WHERE s.status = 'completed' AND s.rate > 0 ORDER BY s.starts_at"
         )
+        loose = {r["client_id"]: r["amount"] for r in self.db.all(
+            "SELECT client_id, SUM(amount) AS amount FROM payments WHERE session_id IS NULL "
+            "AND client_id IS NOT NULL GROUP BY client_id")}
+        out = []
+        for r in rows:
+            owed = r["total"] - r["paid"]
+            use = min(max(owed, 0), loose.get(r["client_id"], 0) or 0)
+            if use:
+                loose[r["client_id"]] -= use
+                r["paid"] = round(r["paid"] + use, 2)
+            if r["total"] - r["paid"] > 0.005:
+                out.append({k: v for k, v in r.items() if k != "client_id"})
+        return out
