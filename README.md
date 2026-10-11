@@ -54,6 +54,15 @@ Just talk to it in Open WebUI (pick the **amo** model) or say it out loud:
   duplicates are merged every night
 - **Weekly self-review** (Sunday evening, or `amo review`) — "This week you corrected me 3 times (2 on times,
   1 on names). What I learned: I'll assume PM for 1 to 6 o'clock… These might be out of date: …"
+- **Coding help** (local code model, `amo setup-coder` once) — paste an error or ask "how do I…" and it explains;
+  "Explain ~/Projects/beatstore/app.py"; "Fix ~/Projects/beatstore/app.py — the cart total is wrong" shows the
+  exact change, "apply the fix" makes it (with a backup), "undo the fix" puts it back. It only touches code in
+  `AMO_CODE_DIRS` (default ~/Projects, ~/Developer, ~/code, ~/Desktop).
+- **Fixes itself** — when something inside AMO crashes, it's recorded; once you've gone quiet AMO asks its code
+  model for the smallest fix, tests it on a copy of itself (every test must pass, and the request that
+  crashed must now work on a copy of your data), then applies it, restarts and tells you. Small fixes only
+  (≤ 30 lines, never its tests/database/repair code), at most 3 a day. "Roll back your last fix" or
+  `amo rollback` undoes it; "fix yourself" / `amo repair` runs it now; `AMO_SELF_REPAIR=0` turns it off.
 - **Long-term recall** — "What did I say about Jay's album last month?" — every past conversation is
   searchable by meaning (local embeddings + a vector index), not just saved facts
 - **Eyes** — "What do you see?", "What am I holding?", "Read this", "Is anyone here?" — a webcam, Pi camera

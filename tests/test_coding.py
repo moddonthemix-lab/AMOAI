@@ -1,7 +1,6 @@
 """Coding help (explain / fix with your OK / undo) and self-repair (tested on a copy, rollback)."""
 
 import textwrap
-from pathlib import Path
 
 import pytest
 
