@@ -54,6 +54,9 @@ int goalCount = 0;
 char nextSession[40] = "";
 char briefClip[24] = "";
 long tzOffset = 0;
+long tzChange = 0, tzOffsetAfter = 0;  // daylight saving: the offset switches at tzChange (epoch)
+
+long localOffset(time_t t) { return (tzChange && t >= tzChange) ? tzOffsetAfter : tzOffset; }
 
 // ------------------------------------------------------------------ small helpers
 String url(const String &path) { return String(AMO_BRAIN) + path; }
@@ -133,7 +136,7 @@ bool playClip(const String &id) {
 
 void sayTime() {
   if (!timeKnown()) { playClip("sleepy"); return; }
-  time_t now = time(nullptr) + tzOffset;
+  time_t now = time(nullptr); now += localOffset(now);
   struct tm t; gmtime_r(&now, &t);
   int h = t.tm_hour % 12; if (!h) h = 12;
   char m[6]; snprintf(m, sizeof m, "m%02d", t.tm_min);
@@ -377,6 +380,8 @@ void applySnapshot(JsonDocument &snap) {
     settimeofday(&tv, nullptr);
   }
   tzOffset = snap["tz_offset"] | 0L;
+  tzChange = snap["tz_change"] | 0L;
+  tzOffsetAfter = snap["tz_offset_after"] | tzOffset;
   timerCount = 0;
   for (JsonObject t : snap["timers"].as<JsonArray>()) {
     if (timerCount >= 16) break;
@@ -578,7 +583,7 @@ void drawFace() {
       }
     }
     if (!line.length() && timeKnown()) {
-      time_t lt = now + tzOffset; struct tm tm; gmtime_r(&lt, &tm);
+      time_t lt = now + localOffset(now); struct tm tm; gmtime_r(&lt, &tm);
       char b[16]; int h = tm.tm_hour % 12; if (!h) h = 12;
       snprintf(b, sizeof b, "%d:%02d %s", h, tm.tm_min, tm.tm_hour < 12 ? "AM" : "PM");
       line = b;
