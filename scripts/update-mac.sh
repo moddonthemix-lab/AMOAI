@@ -56,7 +56,7 @@ step "Updating voice (speaking + listening)"
 if command -v uv >/dev/null && [[ -x .venv/bin/python ]]; then
   uv pip install --python .venv/bin/python -q numpy "piper-tts>=1.3" 2>/dev/null \
     || echo "  Piper isn't available for this Mac — AMO will use the built-in Mac voice"
-  for pkg in "sounddevice>=0.4" "faster-whisper>=1.0"; do
+  for pkg in "sounddevice>=0.4" "faster-whisper>=1.0" "opencv-python-headless>=4.8"; do
     uv pip install --python .venv/bin/python -q "$pkg" 2>/dev/null || echo "  couldn't install $pkg (needed for voice input)"
   done
 fi

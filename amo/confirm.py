@@ -118,7 +118,35 @@ def _goal_checkin(r: dict, a: dict) -> str:
     return f"Checked in on “{r.get('title')}”" + (f" — {streak}-day streak." if streak > 1 else ".")
 
 
+_COLOUR_NAMES = {"#ff0000": "red", "#00ff00": "green", "#0000ff": "blue", "#ffffff": "white", "#ffb46b": "warm white",
+                 "#ffd000": "yellow", "#ff7a00": "orange", "#8a2be2": "purple", "#ff4fa3": "pink",
+                 "#00e5ff": "cyan", "#00b3a4": "teal", "#ff00ff": "magenta"}
+
+
+def _hardware(r: dict, a: dict) -> str:
+    name, act, v = r.get("name", "device"), r.get("action"), r.get("value")
+    if act in ("on", "off"):
+        did, todo = f"Turned the {name} {act}", f"turn the {name} {act}"
+    elif act == "toggle":
+        did, todo = f"Toggled the {name}", f"toggle the {name}"
+    elif act == "brightness":
+        did, todo = f"Set the {name} to {v}%", f"set the {name} to {v}%"
+    elif isinstance(v, str) and v.startswith("#"):
+        colour = _COLOUR_NAMES.get(v, v)
+        did, todo = f"Made the {name} {colour}", f"make the {name} {colour}"
+    elif isinstance(v, (int, float)):
+        did, todo = f"Set the {name} to {v:g}", f"set the {name} to {v:g}"
+    else:
+        did, todo = f"Sent “{v}” to the {name}", f"send that to the {name}"
+    if r.get("done"):
+        return did + "."
+    if r.get("status") == "pending":
+        return f"{r.get('device', 'That device')} is offline — it'll {todo} when it reconnects."
+    return f"Asked the {r.get('device', 'device')} to {todo} — it hasn't confirmed yet."
+
+
 CONFIRM: dict[str, Callable[[dict, dict], str]] = {
+    "hardware_control": _hardware,
     "remember": lambda r, a: "Got it — I'll remember that.",
     "forget": lambda r, a: "Done, I've forgotten that.",
     "add_client": lambda r, a: f"Added {_who(r)} to your clients.",

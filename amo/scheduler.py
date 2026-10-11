@@ -98,6 +98,16 @@ def tick(db: Database, now: datetime | None = None) -> list[str]:
         except (LLMError, ValueError) as e:
             log.warning("learning skipped: %s", e)
 
+    # Long-term recall: embed past conversations in the background once you've gone quiet.
+    if last_msg and last_msg <= (now - LEARN_IDLE).isoformat():
+        try:
+            from .recall import index_conversations
+
+            if index_conversations(db):
+                ran.append("recall_index")
+        except Exception:  # noqa: BLE001 — recall indexing is best effort
+            log.exception("conversation indexing failed")
+
     from .integrations import nightly_backup
     from .proactive import run_jobs
 

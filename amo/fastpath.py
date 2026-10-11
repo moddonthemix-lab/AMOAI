@@ -224,8 +224,32 @@ def text_reply(text: str, has_pending: bool) -> tuple[str, dict[str, Any]] | Non
     return None
 
 
+# Eyes: "what do you see?", "what am I holding?", "read this", "is anyone here?"
+VISION_RE = re.compile(
+    r"^(?:(?:hey )?amo[ ,]*)?(?:can you |could you )?(?:"
+    r"what (?:do|can) you see(?: right now)?|what'?s in front of you|look at (?:this|that|me)(?:\s.*)?|"
+    r"what am i (?:holding|wearing|showing you)(?:\s.*)?|read (?:this|that)(?: for me| out loud)?|"
+    r"(?:can you )?see me|who'?s (?:here|there|in the room)|is (?:anyone|anybody|someone) (?:here|there|in the room)"
+    r")[?.!]*$", re.I)
+# Hands: "turn on the fan", "turn the desk light off", "make the light blue", "set the light to 40%"
+_HW_COLOURS = r"red|green|blue|white|warm white|yellow|orange|purple|pink|cyan|teal|magenta"
+HW_ON_RE = re.compile(r"^(?:please )?(?:turn|switch|flip) (?P<state>on|off) (?:the |my )?(?P<target>.+?)[.!]*$", re.I)
+HW_ON2_RE = re.compile(r"^(?:please )?(?:turn|switch|flip) (?:the |my )?(?P<target>.+?) (?P<state>on|off)[.!]*$", re.I)
+HW_SET_RE = re.compile(rf"^(?:please )?(?:make|set|turn|change) (?:the |my )?(?P<target>.+?) (?:to )?"
+                       rf"(?P<value>{_HW_COLOURS}|\d{{1,3}} ?%|#[0-9a-f]{{6}})[.!]*$", re.I)
+
+
 def match(text: str) -> tuple[str, dict[str, Any]] | None:
     t = text.strip()
+    if VISION_RE.match(_clean_sentence(t)):
+        return "look", {"question": t}
+    for rx in (HW_ON_RE, HW_ON2_RE):
+        m = rx.match(_clean_sentence(t))
+        if m:
+            return "hardware_control", {"target": m.group("target"), "action": m.group("state").lower()}
+    m = HW_SET_RE.match(_clean_sentence(t))
+    if m:
+        return "hardware_control", {"target": m.group("target"), "action": "set", "value": m.group("value").lower()}
     m = TEXT_RE.match(t.rstrip())
     if m:
         msg = m.group("msg").strip()

@@ -53,6 +53,11 @@ class Settings:
     chat_model: str = field(default_factory=lambda: _env("AMO_CHAT_MODEL", "llama3.1:8b"))
     fast_model: str = field(default_factory=lambda: _env("AMO_FAST_MODEL", "llama3.2:3b"))
     embed_model: str = field(default_factory=lambda: _env("AMO_EMBED_MODEL", "nomic-embed-text"))
+    # Eyes: a local vision model (moondream is small enough for a Pi; gemma3:4b sees better) and the
+    # camera: a number (0 = built-in webcam / first USB camera), "pi" (Raspberry Pi camera module),
+    # an http URL that returns a JPEG (ESP32-CAM: http://<ip>/capture), or "none".
+    vision_model: str = field(default_factory=lambda: _env("AMO_VISION_MODEL", "moondream"))
+    camera: str = field(default_factory=lambda: _env("AMO_CAMERA", "0"))
 
     # Voice: a preset (amo | computer | jarvis | british-female | default), a Piper voice name,
     # or "say:<macOS voice>". Rate/pitch/robot override the preset when set.

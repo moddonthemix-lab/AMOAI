@@ -102,3 +102,32 @@ def events_after(after_id: int, db: Database | None = None, limit: int = 50) -> 
 
 def latest_id(db: Database | None = None) -> int:
     return int((db or get_db()).scalar("SELECT COALESCE(MAX(id), 0) FROM face_events"))
+
+
+def now_snapshot(db: Database | None = None, now_ms: int | None = None) -> dict[str, Any]:
+    """Tiny 'what should the face look like right now' for small screens (ESP32): no word timing
+    maths on the device — just the mood, whether AMO is speaking, how open the mouth is, and the word."""
+    db = db or get_db()
+    now_ms = now_ms if now_ms is not None else _now_ms()
+    state = "idle"
+    row = db.one("SELECT data FROM face_events WHERE kind = 'state' ORDER BY id DESC LIMIT 1")
+    if row:
+        state = json.loads(row["data"]).get("state", "idle")
+    out: dict[str, Any] = {"state": state, "speaking": False, "level": 0.0, "word": "", "mood": ""}
+    try:
+        from .mood import describe
+
+        out["mood"] = describe(db).get("name", "")
+    except Exception:  # noqa: BLE001
+        pass
+    for r in db.all("SELECT data FROM face_events WHERE kind = 'say' ORDER BY id DESC LIMIT 6"):
+        ev = json.loads(r["data"])
+        t = now_ms - ev.get("start", 0)
+        if 0 <= t <= ev.get("dur", 0):
+            env = ev.get("env") or [0]
+            out["speaking"] = True
+            out["level"] = env[min(len(env) - 1, t // max(1, ev.get("step", ENV_STEP_MS)))]
+            spoken = [w["w"] for w in ev.get("words", []) if w["t"] <= t]
+            out["word"] = spoken[-1] if spoken else ""
+            break
+    return out

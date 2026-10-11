@@ -7,6 +7,13 @@
 - Studio CRM, reselling tracker, trading journal, goals, Cravvr tasks, revenue tracking
 - Built-in dashboard + morning brief + session reminders (+ optional phone push via ntfy)
 
+## ✅ Capabilities the body will use (built on the Mac, ready for the hardware)
+- Long-term recall: local embeddings + vector index over memories and every past conversation
+- Eyes: webcam / Pi camera / ESP32-CAM + a local vision model (`amo setup-vision`, `amo look`)
+- Hands: ESP32 firmware (`firmware/esp32/amo_body`) + Pi GPIO agent (`amo hw-agent`), confirmed commands
+- Face on a small screen: `/api/face/now` + the ESP32 firmware's TFT face
+See [HARDWARE.md](HARDWARE.md).
+
 ## ⏭ Phase 2 — Raspberry Pi 5, always on
 What's already in place:
 - Everything is plain Python + SQLite + Docker — on the Pi 5 (arm64), `docker compose --profile ollama up -d`
@@ -31,7 +38,8 @@ What's already in place:
 - Bearer-token auth (`AMO_API_KEY`) the device can send.
 
 To do:
-- [ ] ESP32-S3 + touchscreen firmware (LVGL / TFT_eSPI) polling `/api/dashboard`
+- [x] ESP32 / ESP32-S3 firmware: parts control + AMO's face on a TFT (`firmware/esp32/amo_body`)
+- [ ] Touchscreen UI (LVGL) polling `/api/dashboard`
 - [ ] Studio dashboard screen, daily goals screen with tap-to-check-in, revenue screen
 - [ ] Client notifications on the device (session reminders, unpaid balances)
 - [ ] Optional: push-to-talk button on the device streaming audio to `/v1/audio/transcriptions`

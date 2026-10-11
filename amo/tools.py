@@ -131,6 +131,16 @@ def recall(query: str, category: str | None = None):
     return Memory(get_db()).search(query, limit=10, category=category)
 
 
+@tool("Search past conversations with the user by meaning — for 'what did I say about…', 'when did we talk "
+      "about…', 'remind me what I told you about…'. Returns dated exchanges.",
+      query=("string", "What the conversation was about.", True))
+def recall_conversations(query: str):
+    from .recall import search_conversations
+
+    hits = search_conversations(query, limit=5)
+    return {"conversations": hits} if hits else {"conversations": [], "note": "nothing found in past conversations"}
+
+
 @tool("Forget (archive) a memory that is wrong or outdated.",
       memory_id=("integer", "The memory id.", True))
 def forget(memory_id: int):
@@ -527,6 +537,48 @@ def strat_compare(symbols: str):
     return strat.compare(names[:8])
 
 
+# ---------------------------------------------------------------- eyes (camera + vision model)
+@tool("Look through AMO's camera and answer a question about what's there: what do you see, what am I "
+      "holding, read this, is anyone here.",
+      question=("string", "What to look for or answer, in the user's words.", False))
+def look(question: str = ""):
+    from .vision import VisionUnavailable, look as _look
+
+    try:
+        return _look(question)
+    except VisionUnavailable as e:
+        return {"error": str(e)}
+
+
+# ---------------------------------------------------------------- hands (ESP32 / Pi hardware)
+@tool("List AMO's connected hardware (ESP32 boards, Raspberry Pis): devices, their parts, online or not, "
+      "and current state/sensor readings.")
+def hardware_status():
+    from .hardware import devices
+
+    return {"devices": devices()}
+
+
+@tool("Control a part of AMO's hardware: switch a light/fan/relay on or off, set a light's colour or "
+      "brightness, move a servo, set a motor's speed, show text on a display, beep.",
+      target=("string", "The part, e.g. 'fan', 'desk light', 'head'.", True),
+      action=("enum:on|off|toggle|set", "on/off/toggle, or set (with value).", True),
+      value=("string", "For set: colour ('blue', '#ff0000'), brightness ('40%'), angle (0-180), speed "
+                       "(-100..100), or text.", False))
+def hardware_control(target: str, action: str, value: str | None = None):
+    from .hardware import command
+
+    return command(target, action, value)
+
+
+@tool("Read a sensor or part on AMO's hardware (temperature, humidity, light, distance, or a part's state).",
+      target=("string", "The sensor or part, e.g. 'temperature', 'desk humidity'.", True))
+def hardware_read(target: str):
+    from .hardware import read
+
+    return read(target)
+
+
 @tool("Show a price chart on the AMO dashboard.",
       symbol=("string", "Ticker or name.", True),
       timeframe=("enum:D|W|M|60", "Candle size: D daily (default), W weekly, M monthly, 60 hourly.", False))
@@ -678,6 +730,22 @@ GROUPS: dict[str, tuple[list[str], str]] = {
     "texting": (
         ["text_client", "send_text", "cancel_text", "find_client"],
         r"\btext\b|message|imessage|\bsms\b|send it|let (him|her|them) know|remind (him|her|them)",
+    ),
+    "history": (
+        ["recall_conversations"],
+        r"did i (say|tell|mention|ask)|what did (i|we)|when did (i|we)|we (talk|spoke|discuss)|last time|"
+        r"remember when|told you|i mentioned|conversation|earlier (today|this week)|yesterday",
+    ),
+    "vision": (
+        ["look"],
+        r"\bsee\b|look at (this|that|me|it)|camera|holding|wearing|read (this|that)|in front of|"
+        r"who'?s (here|there)|anyone (here|there)|what is this|what'?s this|picture|photo",
+    ),
+    "hardware": (
+        ["hardware_status", "hardware_control", "hardware_read"],
+        r"turn (on|off)|switch (on|off)|\b(on|off)\b|light|lamp|\bled\b|fan|relay|servo|motor|buzzer|beep|"
+        r"display|screen|temperature|\btemp\b|humidity|sensor|device|esp32|raspberry|\bpi\b|hardware|"
+        r"your (head|arm|body|eyes)|colou?r|brightness",
     ),
     "admin": (
         ["forget", "send_notification"],

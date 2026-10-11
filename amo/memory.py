@@ -145,15 +145,16 @@ class Memory:
         if self.use_embeddings and query.strip():
             qvec = get_llm().embed(query)
             if qvec:
-                sql = "SELECT id, embedding FROM memories WHERE archived = 0 AND embedding IS NOT NULL"
-                params2: tuple = ()
-                if category:
-                    sql += " AND category = ?"
-                    params2 = (category,)
-                for row in self.db.all(sql, params2):
-                    sim = _cosine(qvec, json.loads(row["embedding"]))
-                    if sim > 0.35:
-                        scores[row["id"]] = scores.get(row["id"], 0.0) + sim
+                from .recall import MEMORY_INDEX
+
+                hits = MEMORY_INDEX.search(qvec, self.db, k=50, min_score=0.35)
+                if category and hits:
+                    keep = {r["id"] for r in self.db.all(
+                        f"SELECT id FROM memories WHERE category = ? AND id IN ({','.join('?' * len(hits))})",
+                        (category, *[i for i, _ in hits]))}
+                    hits = [(i, sim) for i, sim in hits if i in keep]
+                for mid, sim in hits:
+                    scores[mid] = scores.get(mid, 0.0) + sim
 
         if not scores:
             return []

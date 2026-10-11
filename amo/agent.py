@@ -205,6 +205,10 @@ class Agent:
             content = instant_reply([{"name": name, "arguments": args, "result": result}]) or ""
             if content:
                 trace.append({"name": name, "arguments": args, "result": result})
+            elif name == "look":
+                content = result.get("answer") or result.get("error", "")
+                if "error" not in result:
+                    trace.append({"name": name, "arguments": args, "result": result})
             elif name in ("text_client", "send_text", "cancel_text") and "error" in result:
                 content = result["error"]
             elif name == "delete_record" and "error" in result:

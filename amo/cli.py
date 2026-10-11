@@ -21,6 +21,8 @@
   amo try-voice [PRESET]  hear a voice before choosing it
   amo set-voice PRESET    switch AMO's voice + personality (computer, jarvis, british-female, default)
   amo personality NAME    switch only the personality (mood, chill, computer, jarvis, default)
+  amo look [QUESTION]     take a picture and describe it   (amo setup-vision first)
+  amo hw                  show connected hardware          (amo hw-agent --simulate to try it)
   amo brief               print today's brief
   amo learn               extract facts from recent conversations now
   amo reflect             run the weekly reflection now
@@ -263,6 +265,63 @@ def cmd_device(a):
     from .voice.device import run
 
     run(a.brain, a.key or settings.api_key, verbose=a.verbose)
+
+
+def cmd_hw_agent(a):
+    from .hw_agent import load_config, run
+
+    cfg = load_config(a.config) if a.config else None
+    if cfg is None and not a.simulate:
+        print("Give it a parts file (--config hw.json, see amo/hw_agent.py) or try --simulate.")
+        sys.exit(1)
+    try:
+        run(a.brain.rstrip("/"), a.key or settings.api_key, cfg, simulate=a.simulate or cfg is None)
+    except KeyboardInterrupt:
+        print()
+
+
+def cmd_hw(_a):
+    from .hardware import devices
+
+    devs = devices()
+    if not devs:
+        print("No hardware connected yet. Try:  amo hw-agent --simulate   (in another window)")
+    for d in devs:
+        print(f"{d['name']} ({d['kind']}, {'online' if d['online'] else 'offline'}, last seen {d['last_seen']})")
+        for p in d["parts"]:
+            v = d["state"].get(p["id"])
+            print(f"  {p['name']:<16} {p['type']:<8} {'' if v is None else v}{p.get('unit', '')}")
+
+
+def cmd_setup_vision(a):
+    from .vision import VisionUnavailable, capture
+
+    model = a.model or settings.vision_model
+    print(f"downloading the vision model {model} …")
+    try:
+        _pull(model)
+    except Exception as e:  # noqa: BLE001
+        print(f"couldn't download {model}: {e}  (is the Ollama app running?)")
+        sys.exit(1)
+    if a.model:
+        _set_env("AMO_VISION_MODEL", a.model)
+        _restart_server()
+    try:
+        img = capture()
+        print(f"camera ✓ ({len(img) // 1024} KB picture). Ask AMO: \"what do you see?\"")
+    except VisionUnavailable as e:
+        print(f"camera: {e}")
+
+
+def cmd_look(a):
+    from .vision import VisionUnavailable, look
+
+    try:
+        r = look(" ".join(a.question))
+    except VisionUnavailable as e:
+        print(e)
+        sys.exit(1)
+    print(r["answer"] + (f"   ({r['faces']} face{'s' if r['faces'] != 1 else ''} seen)" if r["faces"] else ""))
 
 
 def cmd_calendar(_a):
@@ -595,6 +654,19 @@ def main(argv: list[str] | None = None) -> None:
     dv.add_argument("--key", default="", help="the brain's AMO_API_KEY")
     dv.add_argument("-v", "--verbose", action="store_true")
     dv.set_defaults(fn=cmd_device)
+    hw = sub.add_parser("hw-agent", help="connect a Raspberry Pi's GPIO (or a simulated device) to AMO")
+    hw.add_argument("--brain", default="http://localhost:8765")
+    hw.add_argument("--key", default="")
+    hw.add_argument("--config", default="", help="parts file (JSON), see amo/hw_agent.py")
+    hw.add_argument("--simulate", action="store_true", help="pretend hardware: a desk light, fan, servo, sensor")
+    hw.set_defaults(fn=cmd_hw_agent)
+    sub.add_parser("hw", help="show AMO's connected hardware").set_defaults(fn=cmd_hw)
+    sv2 = sub.add_parser("setup-vision", help="download the vision model and test the camera")
+    sv2.add_argument("model", nargs="?", default="", help="e.g. gemma3:4b (sees better, slower)")
+    sv2.set_defaults(fn=cmd_setup_vision)
+    lk = sub.add_parser("look", help="take a picture and describe it")
+    lk.add_argument("question", nargs="*")
+    lk.set_defaults(fn=cmd_look)
     sub.add_parser("calendar", help="subscribe Apple Calendar to AMO's sessions").set_defaults(fn=cmd_calendar)
     sub.add_parser("backup", help="back up AMO's data now").set_defaults(fn=cmd_backup)
     rs = sub.add_parser("restore", help="restore AMO's data from a backup file")

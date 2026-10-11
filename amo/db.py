@@ -266,6 +266,32 @@ MIGRATIONS: list[str] = [
     ALTER TABLE trades ADD COLUMN with_continuity INTEGER;
     ALTER TABLE trades ADD COLUMN coach_notes TEXT;
     """,
+    # 12 — long-term recall of conversations; hardware devices (ESP32 / Pi) and their commands
+    """
+    ALTER TABLE conversations ADD COLUMN embedding TEXT;
+    CREATE TABLE hw_devices (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,   -- "desk", "amo-body", "garage"
+        kind TEXT,                   -- esp32 | pi | sim
+        parts TEXT NOT NULL,         -- JSON [{"id": "fan", "type": "switch", "name": "fan", "unit": ""}]
+        state TEXT NOT NULL DEFAULT '{}',  -- JSON {"fan": true, "temp": 22.5}
+        ip TEXT,
+        last_seen TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE hw_commands (
+        id INTEGER PRIMARY KEY,
+        device TEXT NOT NULL,
+        part TEXT NOT NULL,
+        action TEXT NOT NULL,        -- on | off | toggle | set
+        value TEXT,                  -- JSON
+        status TEXT NOT NULL DEFAULT 'pending',  -- pending | sent | done | failed
+        result TEXT,
+        created_at TEXT NOT NULL,
+        done_at TEXT
+    );
+    CREATE INDEX hw_commands_pending ON hw_commands(device, status);
+    """,
 ]
 
 

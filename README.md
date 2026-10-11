@@ -38,6 +38,13 @@ Just talk to it in Open WebUI (pick the **amo** model) or say it out loud:
 - **Memory** — tell it anything ("My engineer Marcus works Tuesdays") and it remembers. It also pulls facts
   out of conversations automatically, and every Sunday night writes a **weekly reflection** (what's working,
   what's slipping, what to focus on) that it carries into every future conversation.
+- **Long-term recall** — "What did I say about Jay's album last month?" — every past conversation is
+  searchable by meaning (local embeddings + a vector index), not just saved facts
+- **Eyes** — "What do you see?", "What am I holding?", "Read this", "Is anyone here?" — a webcam, Pi camera
+  or ESP32-CAM + a local vision model (`amo setup-vision` once)
+- **Hands** — "Turn on the fan", "Make the desk light purple", "Turn your head to 120", "What's the
+  temperature?" — ESP32 boards and Raspberry Pis wired to lights, relays, servos and sensors
+  ([docs/HARDWARE.md](docs/HARDWARE.md); try it now with `amo hw-agent --simulate`)
 - **Automatic**: 8am morning brief, reminders 2 hours before studio sessions (with a ready-to-send text
   for the client), optional phone push via [ntfy](https://ntfy.sh).
 
@@ -197,6 +204,11 @@ The body is just ears and a mouth — the thinking stays on your Mac (the brain)
 
 The device streams "Got it" and each sentence's audio from the brain as it's ready, supports
 interruptions and "good morning", and works with any USB mic/speaker. `amo lan off` closes it again.
+
+**Eyes and hands for the body:** a Pi can also run `amo hw-agent --config hw.json` (its GPIO pins
+become parts AMO controls), and ESP32 boards run `firmware/esp32/amo_body` (relays, NeoPixel lights,
+servos, buzzer, sensors, and AMO's face on a TFT screen). Cameras: set `AMO_CAMERA=pi` on a Pi, or point
+it at an ESP32-CAM (`AMO_CAMERA=http://<ip>/capture`). Everything is in [docs/HARDWARE.md](docs/HARDWARE.md).
 
 ### AMO's voice
 

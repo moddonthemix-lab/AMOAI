@@ -345,6 +345,100 @@ def face_events(after: int = -1):
     return {"events": events, "last": events[-1]["id"] if events else after, "now": int(time.time() * 1000)}
 
 
+@app.get("/api/face/now", dependencies=[Depends(auth)])
+def face_now():
+    """For small screens (ESP32): state, speaking, mouth level 0-1, current word, mood."""
+    from .. import face
+
+    return face.now_snapshot(get_db())
+
+
+# ---------------------------------------------------------------- hardware (ESP32 / Pi)
+class HwHello(BaseModel):
+    device: str
+    kind: str = "esp32"
+    parts: list[dict[str, Any]] = []
+    state: dict[str, Any] = {}
+
+
+class HwReport(BaseModel):
+    device: str
+    state: dict[str, Any] = {}
+    done: list[dict[str, Any]] = []
+
+
+class HwCommand(BaseModel):
+    target: str
+    action: str = "set"
+    value: Any = None
+
+
+@app.post("/api/hw/hello", dependencies=[Depends(auth)])
+def hw_hello(body: HwHello, request: Request):
+    from .. import hardware
+
+    return {**hardware.hello(body.device, body.parts, body.kind, request.client.host if request.client else None,
+                             body.state, get_db()), "poll_wait": 20, "report_every": 10}
+
+
+@app.get("/api/hw/poll", dependencies=[Depends(auth)])
+def hw_poll(device: str, wait: float = 0):
+    from .. import hardware
+
+    return {"commands": hardware.poll(device, wait, get_db())}
+
+
+@app.post("/api/hw/report", dependencies=[Depends(auth)])
+def hw_report(body: HwReport):
+    from .. import hardware
+
+    try:
+        return hardware.report(body.device, body.state, body.done, get_db())
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.get("/api/hw", dependencies=[Depends(auth)])
+def hw_devices():
+    from .. import hardware
+
+    return {"devices": hardware.devices(get_db())}
+
+
+@app.post("/api/hw/command", dependencies=[Depends(auth)])
+def hw_command(body: HwCommand):
+    from .. import hardware
+
+    try:
+        return hardware.command(body.target, body.action, body.value, get_db())
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+# ---------------------------------------------------------------- eyes
+@app.post("/api/vision", dependencies=[Depends(auth)])
+async def vision(file: UploadFile = File(...), question: str = Form("")):
+    """A device sends a picture (JPEG/PNG) and a question; AMO answers with its local vision model."""
+    from ..vision import VisionUnavailable, _keep, describe, faces_in
+
+    image = _keep(await file.read())
+    try:
+        answer = await run_in_threadpool(describe, image, question)
+    except (VisionUnavailable, LLMError) as e:
+        raise HTTPException(503, str(e)) from e
+    return {"answer": answer, "faces": faces_in(image)}
+
+
+@app.get("/api/camera/last", dependencies=[Depends(auth)])
+def camera_last():
+    """The last picture AMO took or was sent."""
+    from ..vision import LAST
+
+    if not LAST.is_file():
+        raise HTTPException(404, "AMO hasn't looked at anything yet")
+    return FileResponse(LAST, media_type="image/jpeg")
+
+
 class FaceEvent(BaseModel):
     kind: Literal["state", "say", "heard"]
     model_config = {"extra": "allow"}
