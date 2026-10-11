@@ -259,63 +259,17 @@ def converse(req: ConverseRequest):
     delimited JSON as it's ready — the "Got it", then each spoken sentence with its audio (base64
     WAV), then the full reply. The device can start playing the first sentence immediately."""
     import base64
-    import queue as _queue
-    import threading as _threading
 
-    from ..voice import acks
-    from ..voice.speaker import split_ready
-    from ..voice.tts import synthesize
+    from ..voice.stream import spoken_reply
 
-    out: _queue.Queue = _queue.Queue()
-    pieces: _queue.Queue = _queue.Queue()
     history = [m.model_dump() for m in req.history] + [{"role": "user", "content": req.text}]
 
-    def audio_line(text: str, wav: bytes, kind: str = "sentence") -> str:
-        return json.dumps({"type": kind, "text": text, "wav": base64.b64encode(wav).decode()}) + "\n"
-
-    def think() -> None:
-        try:
-            reply = Agent().chat(history, channel="voice", on_text=pieces.put)["content"]
-            pieces.put(("done", reply))
-        except LLMError as e:
-            pieces.put(f"Sorry, I couldn't do that: {e}")
-            pieces.put(("done", ""))
-
-    def speak() -> None:
-        phrase = acks.pick(req.text)
-        if phrase:
-            try:
-                out.put(audio_line(phrase, acks.audio(phrase), "ack"))
-            except Exception:  # noqa: BLE001
-                pass
-        buf, said_any, still_n = "", False, 0
-        deadline = time.monotonic() + settings.ack_still_after
-        while True:
-            try:
-                item = pieces.get(timeout=0.2)
-            except _queue.Empty:
-                if not said_any and time.monotonic() > deadline and (line := acks.still(still_n)):
-                    out.put(audio_line(line, acks.audio(line), "ack"))
-                    still_n += 1
-                    deadline = time.monotonic() + settings.ack_still_after * 2
-                continue
-            if isinstance(item, tuple):  # finished
-                if buf.strip():
-                    out.put(audio_line(buf.strip(), synthesize(buf.strip())))
-                out.put(json.dumps({"type": "done", "reply": item[1]}) + "\n")
-                out.put(None)
-                return
-            ready, buf = split_ready(buf + item)
-            for sentence in ready:
-                said_any = True
-                out.put(audio_line(sentence, synthesize(sentence)))
-
-    _threading.Thread(target=think, daemon=True).start()
-    _threading.Thread(target=speak, daemon=True).start()
-
     def stream():
-        while (line := out.get()) is not None:
-            yield line
+        for kind, text, wav in spoken_reply(history, req.text):
+            if kind == "done":
+                yield json.dumps({"type": "done", "reply": text}) + "\n"
+            else:
+                yield json.dumps({"type": kind, "text": text, "wav": base64.b64encode(wav).decode()}) + "\n"
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
 
@@ -465,6 +419,98 @@ def camera_last():
     if not LAST.is_file():
         raise HTTPException(404, "AMO hasn't looked at anything yet")
     return FileResponse(LAST, media_type="image/jpeg")
+
+
+# ---------------------------------------------------------------- the pocket pet (ESP32-S3 body)
+@app.get("/api/pocket/snapshot", dependencies=[Depends(auth)])
+def pocket_snapshot():
+    """The pet's copy of your day (kept on its SD card for when there's no Wi-Fi)."""
+    from .. import pocket
+
+    return pocket.snapshot(get_db())
+
+
+@app.get("/api/pocket/clip/{clip_id}", dependencies=[Depends(auth)])
+def pocket_clip(clip_id: str):
+    """A phrase in AMO's voice as a 16 kHz WAV (time parts, timers, the brief, offline replies)."""
+    from .. import pocket
+
+    wav = pocket.clip_wav(clip_id, get_db())
+    if wav is None:
+        raise HTTPException(404, "no such clip")
+    return Response(wav, media_type="audio/wav")
+
+
+def _pocket_stream(history: list[dict[str, Any]], text: str):
+    """Speak the reply as raw 16 kHz PCM, sentence by sentence (the pet plays it as it arrives)."""
+    from .. import face, pocket
+    from ..voice.stream import spoken_reply
+
+    face.publish_state("thinking")
+    for kind, said, wav in spoken_reply(history, text):
+        if kind == "done":
+            break
+        face.publish_say(said, wav)
+        yield pocket.to_pcm16k(wav)
+    face.publish_state("idle")
+
+
+@app.post("/api/pocket/talk", dependencies=[Depends(auth)])
+async def pocket_talk(request: Request):
+    """Body: a WAV of what you said (push-to-talk). Reply: AMO's answer as streamed 16 kHz PCM."""
+    from .. import face
+    from ..voice.listen import vocab
+    from ..voice.stt import VoiceUnavailable, transcribe
+
+    audio = await request.body()
+    try:
+        text = (await run_in_threadpool(transcribe, audio, "en", None, vocab())).strip()
+    except VoiceUnavailable as e:
+        raise HTTPException(503, str(e)) from e
+    if not text:
+        raise HTTPException(422, "didn't catch that")
+    face.publish_heard(text)
+    return StreamingResponse(_pocket_stream([{"role": "user", "content": text}], text),
+                             media_type="application/octet-stream", headers={"X-AMO-Rate": "16000",
+                                                                             "X-AMO-Heard": text[:200].encode("ascii", "ignore").decode()})
+
+
+@app.post("/api/pocket/look", dependencies=[Depends(auth)])
+async def pocket_look(request: Request, question: str = ""):
+    """Body: a JPEG from the pet's camera. Reply: what AMO sees, as streamed 16 kHz PCM."""
+    from .. import pocket
+    from ..vision import VisionUnavailable, _keep, describe
+    from ..voice.tts import synthesize
+
+    image = _keep(await request.body())
+    try:
+        answer = await run_in_threadpool(describe, image, question or "What do you see?")
+    except (VisionUnavailable, LLMError) as e:
+        answer = str(e)
+    wav = await run_in_threadpool(synthesize, answer)
+    from .. import face
+
+    face.publish_say(answer, wav)
+    return Response(pocket.to_pcm16k(wav), media_type="application/octet-stream", headers={"X-AMO-Rate": "16000"})
+
+
+@app.post("/api/pocket/sync", dependencies=[Depends(auth)])
+async def pocket_sync(request: Request, event: str):
+    """One thing the pet recorded while offline (?event=<json>, body = the WAV/JPEG if any)."""
+    from .. import pocket
+
+    try:
+        return pocket.receive(json.loads(event), await request.body(), get_db())
+    except (ValueError, json.JSONDecodeError) as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.post("/api/pocket/synced", dependencies=[Depends(auth)])
+def pocket_synced():
+    """All uploads are in: handle them. Returns {"summary", "say": clip id to play}."""
+    from .. import pocket
+
+    return pocket.process(get_db())
 
 
 class FaceEvent(BaseModel):

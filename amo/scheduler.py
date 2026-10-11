@@ -108,6 +108,16 @@ def tick(db: Database, now: datetime | None = None) -> list[str]:
         except Exception:  # noqa: BLE001
             log.exception("knowledge sync failed")
 
+    stale = (now - timedelta(minutes=10)).isoformat()
+    if db.scalar("SELECT 1 FROM pocket_events WHERE status = 'received' AND created_at < ? LIMIT 1", (stale,)):
+        try:  # the pet uploaded things but never said it was done — handle them anyway
+            from .pocket import process
+
+            process(db)
+            ran.append("pocket")
+        except Exception:  # noqa: BLE001
+            log.exception("pocket processing failed")
+
     from .selfrepair import maybe_run as self_repair
     from .warmup import keep_warm
 

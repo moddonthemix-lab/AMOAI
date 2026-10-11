@@ -256,6 +256,12 @@ class Agent:
                 self._log(channel, user_text, quick)
                 return {"content": quick, "tool_calls": []}
             fast = fastpath.text_reply(user_text, pending_text(self.db) is not None)
+            if not fast:  # "yes" / "skip" to something you asked the pocket pet while it was offline
+                from . import pocket
+
+                if pocket.pending(self.db) and (pocket.YES_RE.match(user_text.strip())
+                                                or pocket.NO_RE.match(user_text.strip())):
+                    return self._offline_answer(user_text, channel, on_text)
             if not fast and not fastpath.TEXT_RE.match(user_text.strip()):
                 from .profile import match as preference_match
 
@@ -354,6 +360,23 @@ class Agent:
         if learn:
             threading.Thread(target=self._learn_safely, daemon=True).start()
         return {"content": content, "tool_calls": trace}
+
+    def _offline_answer(self, user_text: str, channel: str, on_text: Callable[[str], None] | None) -> dict[str, Any]:
+        from . import pocket
+
+        item = pocket.pop_pending(self.db)
+        if pocket.YES_RE.match(user_text.strip()):
+            out = self.chat([{"role": "user", "content": item["text"]}], channel=channel)
+            content, calls = out["content"], out["tool_calls"]
+        else:
+            content, calls = "Okay, skipped.", []
+        nxt = pocket.pending(self.db)
+        if nxt:
+            content += f" You also asked me to {nxt[0]['text'].rstrip('.?!')} — want me to do it?"
+        if on_text:
+            on_text(content)
+        self._log(channel, user_text, content)
+        return {"content": content, "tool_calls": calls}
 
     def _tool_loop(self, llm: Any, convo: list[dict[str, Any]], schemas: list[dict[str, Any]],
                    model: str | None, trace: list[dict[str, Any]]) -> str:

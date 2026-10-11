@@ -373,6 +373,20 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX knowledge_path ON knowledge_chunks(path);
     """,
+    # 17 — the pocket pet: things it recorded while offline, uploaded when it reconnects
+    """
+    CREATE TABLE pocket_events (
+        id INTEGER PRIMARY KEY,
+        event_id TEXT NOT NULL UNIQUE,   -- made on the device, so re-uploads are harmless
+        type TEXT NOT NULL,              -- voice_note | photo | pet | timer_fired
+        at TEXT NOT NULL,                -- when it happened (local time)
+        data TEXT NOT NULL DEFAULT '{}',
+        file TEXT,
+        status TEXT NOT NULL DEFAULT 'received',   -- received | done | failed
+        result TEXT,
+        created_at TEXT NOT NULL
+    );
+    """,
 ]
 
 
