@@ -6,6 +6,10 @@ os.environ["AMO_AUTO_LEARN"] = "0"
 os.environ["AMO_VOICE"] = "default"
 os.environ["AMO_LOCATION"] = "none"  # tests never call weather / IP-lookup services
 os.environ["AMO_CALENDAR_URLS"] = ""
+_tmp = __import__("tempfile").mkdtemp(prefix="amo-test-")
+os.environ["AMO_KNOWLEDGE_DIR"] = os.path.join(_tmp, "knowledge")  # never your real folders
+os.environ["AMO_PERSONA_FILE"] = os.path.join(_tmp, "persona.md")
+os.environ["AMO_CODE_DIRS"] = os.path.join(_tmp, "code")
 os.environ["AMO_BACKUP_DIR"] = __import__("tempfile").mkdtemp(prefix="amo-test-backups-")
 
 import pytest  # noqa: E402

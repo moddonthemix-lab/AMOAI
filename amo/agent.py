@@ -48,7 +48,7 @@ How you work:
   (and read_webpage for detail), then answer briefly and name your source. Don't guess.
 - For trading charts and analysis use strat_analysis — it computes The Strat levels from live data.
 - If a tool returns an error (e.g. an ambiguous client), ask a short clarifying question.
-{voice_hint}{personality}
+{voice_hint}{personality}{persona}
 What you know about {owner}:
 {core}
 {favorites}{reflection}"""
@@ -87,6 +87,15 @@ VOICE_HINT = (
 )
 
 
+def _persona() -> str:
+    try:
+        from .persona import prompt_block
+
+        return prompt_block()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _favorites_line(db: Database) -> str:
     try:
         from .profile import prompt_line
@@ -122,6 +131,7 @@ class Agent:
             owner=settings.owner_name,
             voice_hint=VOICE_HINT if channel == "voice" else "",
             personality=personality,
+            persona=_persona(),
             core=_format_memories(core) or "- (nothing yet — learn as you go)",
             favorites=_favorites_line(self.db),
             reflection=("\nYour latest weekly reflection (patterns you noticed):\n" + latest["summary"] + "\n")
@@ -144,6 +154,11 @@ class Agent:
                         if m["id"] not in core_ids]
             if relevant:
                 parts.append("Possibly relevant: " + " | ".join(m["content"] for m in relevant))
+            from .knowledge import context_for
+
+            docs = context_for(user_text, self.db)
+            if docs:
+                parts.append(docs)
         return TURN_NOTE.format(note=". ".join(parts))
 
     # ------------------------------------------------------------ chat
@@ -251,9 +266,11 @@ class Agent:
                 from .notes import match as notes_match
 
                 from .coding import match as code_match
+                from .knowledge import match as knowledge_match
 
                 fast = (timer_match(user_text, local_now()) or pronounce_match(user_text, last_reply)
-                        or preference_match(user_text) or notes_match(user_text) or code_match(user_text))
+                        or preference_match(user_text) or notes_match(user_text) or code_match(user_text)
+                        or knowledge_match(user_text))
             fast = fast or fastpath.match(user_text)
         if fast:
             name, args = fast
@@ -265,6 +282,13 @@ class Agent:
             content = instant_reply([{"name": name, "arguments": args, "result": result}]) or ""
             if content:
                 trace.append({"name": name, "arguments": args, "result": result})
+            elif name == "search_knowledge":
+                if result.get("hits"):  # let the model answer from your files
+                    note = " | ".join(f"From your file “{h['file']}”: {h['text'][:700]}" for h in result["hits"])
+                    convo[-1] = {**convo[-1], "content": f"({note})\n\n" + convo[-1]["content"]}
+                    trace.append({"name": name, "arguments": args, "result": result})
+                else:
+                    content = result.get("text") or result.get("error", "")
             elif name.startswith(("code_", "self_")):
                 content = result.get("text") or result.get("error", "")
                 if channel == "voice" and result.get("diff"):  # don't read a diff out loud

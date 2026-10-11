@@ -327,6 +327,31 @@ def cmd_setup_coder(a):
     print("Coding ready. Ask AMO about code, paste an error, or say: fix ~/Projects/yourapp/main.py")
 
 
+def cmd_persona(_a):
+    import subprocess
+
+    from .persona import ensure
+
+    path = ensure()
+    print(f"AMO's identity file: {path}\nEdit it, save — AMO uses it on the next message.")
+    if sys.platform == "darwin":
+        subprocess.run(["open", "-e", str(path)], check=False)
+
+
+def cmd_knowledge(_a):
+    import subprocess
+
+    from .db import get_db
+    from .knowledge import ensure_folder, sync
+
+    f = ensure_folder()
+    s = sync(get_db(), budget=400)
+    print(f"Knowledge folder: {f}\n{s['files']} file(s) — {s['added']} new/changed read, {s['removed']} removed, "
+          f"{s['embedded']} piece(s) indexed.")
+    if sys.platform == "darwin":
+        subprocess.run(["open", str(f)], check=False)
+
+
 def cmd_repair(_a):
     from .selfrepair import run, status_text
 
@@ -707,6 +732,8 @@ def main(argv: list[str] | None = None) -> None:
     sv2 = sub.add_parser("setup-vision", help="download the vision model and test the camera")
     sv2.add_argument("model", nargs="?", default="", help="e.g. gemma3:4b (sees better, slower)")
     sv2.set_defaults(fn=cmd_setup_vision)
+    sub.add_parser("persona", help="edit AMO's identity file (who AMO is)").set_defaults(fn=cmd_persona)
+    sub.add_parser("knowledge", help="open your knowledge folder and read new files now").set_defaults(fn=cmd_knowledge)
     sub.add_parser("repair", help="fix AMO's own recorded bugs now (tested first)").set_defaults(fn=cmd_repair)
     sub.add_parser("rollback", help="undo AMO's last fix to itself").set_defaults(fn=cmd_rollback)
     sc = sub.add_parser("setup-coder", help="download AMO's local code model")

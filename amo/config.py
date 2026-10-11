@@ -63,6 +63,9 @@ class Settings:
     # an http URL that returns a JPEG (ESP32-CAM: http://<ip>/capture), or "none".
     # Coding: a local code model (qwen2.5-coder:3b suits an Intel Mac / Pi; :7b is smarter but slower),
     # the folders AMO may read and fix code in, and whether it fixes its own bugs (only if all tests pass).
+    # Your knowledge folder: drop in documents (txt, md, pdf, docx, csv, html…) and AMO learns from them.
+    persona_file: str = field(default_factory=lambda: _env("AMO_PERSONA_FILE", ""))  # default data/persona.md
+    knowledge_dir: str = field(default_factory=lambda: _env("AMO_KNOWLEDGE_DIR", "~/Documents/AMO Knowledge"))
     coder_model: str = field(default_factory=lambda: _env("AMO_CODER_MODEL", "qwen2.5-coder:3b"))
     code_dirs: str = field(default_factory=lambda: _env(
         "AMO_CODE_DIRS", "~/Projects,~/Developer,~/code,~/Desktop,~/Documents/code"))

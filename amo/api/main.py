@@ -61,6 +61,10 @@ async def lifespan(app: FastAPI):
         from ..selfrepair import install as record_crashes
         from ..warmup import warm_all
 
+        from .. import knowledge, persona
+
+        persona.ensure()  # data/persona.md — who AMO is, written by you
+        knowledge.ensure_folder()  # ~/Documents/AMO Knowledge
         record_crashes()  # AMO's own crashes are recorded so it can fix simple ones (selfrepair.py)
 
         threading.Thread(target=warm_all, daemon=True).start()

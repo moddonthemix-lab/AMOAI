@@ -631,6 +631,15 @@ def timer_left(target: str = ""):
     return {"text": timers.time_left(target or None)}
 
 
+# ---------------------------------------------------------------- knowledge folder
+@tool("Search the user's own documents (their knowledge folder: PDFs, docs, notes, price sheets, plans).",
+      query=("string", "What to look for.", True))
+def search_knowledge(query: str):
+    from .knowledge import answer
+
+    return answer(query)
+
+
 # ---------------------------------------------------------------- coding
 @tool("Answer a coding question or explain an error (uses AMO's local code model). Include pasted code.",
       question=("string", "The question, error or code, as the user gave it.", True))
@@ -912,6 +921,10 @@ GROUPS: dict[str, tuple[list[str], str]] = {
         ["code_help", "code_explain", "code_fix", "code_apply", "code_undo", "self_repair", "self_rollback"],
         r"code|coding|bug|error|exception|traceback|script|function|python|javascript|html|css|react|"
         r"compile|syntax|debug|program|\.py\b|\.js\b|```",
+    ),
+    "knowledge": (
+        ["search_knowledge"],
+        r"\b(?:docs?|documents?|files?|pdf|knowledge|price sheet|plan|my notes)\b",
     ),
     "notes": (
         ["add_note", "find_notes"],

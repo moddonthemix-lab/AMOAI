@@ -361,6 +361,18 @@ MIGRATIONS: list[str] = [
         created_at TEXT NOT NULL
     );
     """,
+    # 16 — knowledge folder: your documents, split into searchable pieces
+    """
+    CREATE TABLE knowledge_chunks (
+        id INTEGER PRIMARY KEY,
+        path TEXT NOT NULL,          -- relative to the knowledge folder
+        mtime REAL NOT NULL,
+        chunk INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        embedding TEXT
+    );
+    CREATE INDEX knowledge_path ON knowledge_chunks(path);
+    """,
 ]
 
 

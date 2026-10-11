@@ -54,6 +54,11 @@ Just talk to it in Open WebUI (pick the **amo** model) or say it out loud:
   duplicates are merged every night
 - **Weekly self-review** (Sunday evening, or `amo review`) — "This week you corrected me 3 times (2 on times,
   1 on names). What I learned: I'll assume PM for 1 to 6 o'clock… These might be out of date: …"
+- **His own identity** — `amo persona` opens AMO's identity file (data/persona.md): who he is, how he talks
+  to you, catchphrases, inside jokes, what he never does. You write it; it's part of every answer.
+- **Your knowledge folder** — drop PDFs, Word docs, notes, lyrics, price sheets, plans or CSVs into
+  `~/Documents/AMO Knowledge` (`amo knowledge` opens it). AMO reads new files within minutes and answers from
+  them ("what do my docs say about mixing prices?"), and pulls in the right piece on its own when it fits.
 - **Coding help** (local code model, `amo setup-coder` once) — paste an error or ask "how do I…" and it explains;
   "Explain ~/Projects/beatstore/app.py"; "Fix ~/Projects/beatstore/app.py — the cart total is wrong" shows the
   exact change, "apply the fix" makes it (with a backup), "undo the fix" puts it back. It only touches code in

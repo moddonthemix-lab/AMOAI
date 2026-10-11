@@ -97,6 +97,17 @@ def tick(db: Database, now: datetime | None = None) -> list[str]:
         except Exception:  # noqa: BLE001 — recall indexing is best effort
             log.exception("conversation indexing failed")
 
+    last_sync = db.get_kv("knowledge_synced")
+    if not last_sync or last_sync <= (now - timedelta(minutes=5)).isoformat():  # your knowledge folder
+        db.set_kv("knowledge_synced", now.isoformat(timespec="seconds"))
+        try:
+            from .knowledge import sync
+
+            if any(sync(db).get(k) for k in ("added", "removed", "embedded")):
+                ran.append("knowledge")
+        except Exception:  # noqa: BLE001
+            log.exception("knowledge sync failed")
+
     from .selfrepair import maybe_run as self_repair
     from .warmup import keep_warm
 
