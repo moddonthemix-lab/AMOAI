@@ -61,6 +61,12 @@ class Settings:
     # Eyes: a local vision model (moondream is small enough for a Pi; gemma3:4b sees better) and the
     # camera: a number (0 = built-in webcam / first USB camera), "pi" (Raspberry Pi camera module),
     # an http URL that returns a JPEG (ESP32-CAM: http://<ip>/capture), or "none".
+    # Coding: a local code model (qwen2.5-coder:3b suits an Intel Mac / Pi; :7b is smarter but slower),
+    # the folders AMO may read and fix code in, and whether it fixes its own bugs (only if all tests pass).
+    coder_model: str = field(default_factory=lambda: _env("AMO_CODER_MODEL", "qwen2.5-coder:3b"))
+    code_dirs: str = field(default_factory=lambda: _env(
+        "AMO_CODE_DIRS", "~/Projects,~/Developer,~/code,~/Desktop,~/Documents/code"))
+    self_repair: bool = field(default_factory=lambda: _env("AMO_SELF_REPAIR", "1") in ("1", "true", "yes"))
     vision_model: str = field(default_factory=lambda: _env("AMO_VISION_MODEL", "moondream"))
     camera: str = field(default_factory=lambda: _env("AMO_CAMERA", "0"))
 

@@ -313,6 +313,38 @@ def cmd_setup_vision(a):
         print(f"camera: {e}")
 
 
+def cmd_setup_coder(a):
+    model = a.model or settings.coder_model
+    print(f"downloading the code model {model} … (about 2 GB for the 3b, 4.7 GB for the 7b)")
+    try:
+        _pull(model)
+    except Exception as e:  # noqa: BLE001
+        print(f"couldn't download {model}: {e}  (is the Ollama app running?)")
+        sys.exit(1)
+    if a.model:
+        _set_env("AMO_CODER_MODEL", a.model)
+        _restart_server()
+    print("Coding ready. Ask AMO about code, paste an error, or say: fix ~/Projects/yourapp/main.py")
+
+
+def cmd_repair(_a):
+    from .selfrepair import run, status_text
+
+    print(status_text())
+    for r in run(restart=True):
+        print(f"• {r['file']}: {r['result']}" + (f"\n{r['diff']}" if r["result"] == "applied" else
+                                                 f" — {r['detail'][-300:]}" if r["detail"] else ""))
+
+
+def cmd_rollback(_a):
+    from .selfrepair import rollback
+
+    try:
+        print(rollback()["text"])
+    except ValueError as e:
+        print(e)
+
+
 def cmd_look(a):
     from .vision import VisionUnavailable, look
 
@@ -675,6 +707,11 @@ def main(argv: list[str] | None = None) -> None:
     sv2 = sub.add_parser("setup-vision", help="download the vision model and test the camera")
     sv2.add_argument("model", nargs="?", default="", help="e.g. gemma3:4b (sees better, slower)")
     sv2.set_defaults(fn=cmd_setup_vision)
+    sub.add_parser("repair", help="fix AMO's own recorded bugs now (tested first)").set_defaults(fn=cmd_repair)
+    sub.add_parser("rollback", help="undo AMO's last fix to itself").set_defaults(fn=cmd_rollback)
+    sc = sub.add_parser("setup-coder", help="download AMO's local code model")
+    sc.add_argument("model", nargs="?", default="", help="e.g. qwen2.5-coder:7b (smarter, slower)")
+    sc.set_defaults(fn=cmd_setup_coder)
     lk = sub.add_parser("look", help="take a picture and describe it")
     lk.add_argument("question", nargs="*")
     lk.set_defaults(fn=cmd_look)

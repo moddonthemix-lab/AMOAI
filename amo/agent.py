@@ -250,8 +250,10 @@ class Agent:
                                    if m["role"] == "assistant" and isinstance(m["content"], str)), "")
                 from .notes import match as notes_match
 
+                from .coding import match as code_match
+
                 fast = (timer_match(user_text, local_now()) or pronounce_match(user_text, last_reply)
-                        or preference_match(user_text) or notes_match(user_text))
+                        or preference_match(user_text) or notes_match(user_text) or code_match(user_text))
             fast = fast or fastpath.match(user_text)
         if fast:
             name, args = fast
@@ -263,6 +265,13 @@ class Agent:
             content = instant_reply([{"name": name, "arguments": args, "result": result}]) or ""
             if content:
                 trace.append({"name": name, "arguments": args, "result": result})
+            elif name.startswith(("code_", "self_")):
+                content = result.get("text") or result.get("error", "")
+                if channel == "voice" and result.get("diff"):  # don't read a diff out loud
+                    content = (f"I've got a fix ready for {', '.join(result['files'])} — {result['lines']} lines. "
+                               "It's on the dashboard. Say apply the fix to make the change.")
+                if "error" not in result:
+                    trace.append({"name": name, "arguments": args, "result": result})
             elif name in ("list_timers", "cancel_timer", "timer_left", "find_notes"):
                 content = result.get("text") or result.get("error", "")
                 trace.append({"name": name, "arguments": args, "result": result})
@@ -286,6 +295,14 @@ class Agent:
             elif name in ("strat_analysis", "strat_compare", "show_chart", "watchlist_add",
                           "watchlist_remove", "watchlist_show", "watchlist_scan", "check_trade", "trading_review"):
                 content = result.get("error", "")
+        if not content and user_text and not fast:
+            from .coding import answer as code_answer, is_code_question
+
+            if is_code_question(user_text):  # coding questions go to the code model
+                try:
+                    content = code_answer(user_text, voice=channel == "voice", history=history[:-1])
+                except LLMError as e:
+                    content = (f"{e} Run: amo setup-coder" if "isn't downloaded" in str(e) else str(e))
         if not content:  # no shortcut, or it failed: let the model handle it
             content = self._tool_loop(llm, convo, schemas, model, trace)
 

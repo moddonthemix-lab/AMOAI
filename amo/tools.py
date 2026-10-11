@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -105,8 +106,16 @@ def call(name: str, arguments: dict[str, Any] | str | None) -> str:
         return json.dumps({"error": f"missing required argument(s): {', '.join(missing)}"})
     try:
         result = t.fn(**args)
-    except (ValueError, TypeError) as e:
+    except ValueError as e:  # a normal "can't do that" (unknown client, bad date…)
         return json.dumps({"error": str(e)})
+    except Exception as e:  # noqa: BLE001 — a bug: log it (self-repair picks it up), keep talking
+        from .llm import LLMError
+
+        if isinstance(e, LLMError):
+            return json.dumps({"error": str(e)})
+        logging.getLogger("amo.tools").error("tool %s crashed", name, exc_info=True,
+                                             extra={"amo_repro": {"tool": name, "args": args}})
+        return json.dumps({"error": f"something broke inside me ({type(e).__name__}: {e}) — I've logged it"})
     return json.dumps(result, default=str)
 
 
@@ -622,6 +631,69 @@ def timer_left(target: str = ""):
     return {"text": timers.time_left(target or None)}
 
 
+# ---------------------------------------------------------------- coding
+@tool("Answer a coding question or explain an error (uses AMO's local code model). Include pasted code.",
+      question=("string", "The question, error or code, as the user gave it.", True))
+def code_help(question: str):
+    from .coding import answer
+
+    return {"text": answer(question)}
+
+
+@tool("Explain a code file or project folder in the user's code folders.",
+      path=("string", "File or folder, e.g. '~/Projects/app/main.py' or 'main.py'.", True),
+      question=("string", "What they want to know.", False))
+def code_explain(path: str, question: str = ""):
+    from .coding import explain
+
+    return explain(path, question)
+
+
+@tool("Propose a fix for a bug in a code file (shown as a diff; nothing changes until the user says apply).",
+      path=("string", "The file, e.g. '~/Projects/app/main.py'.", True),
+      problem=("string", "What's wrong / the error message.", False))
+def code_fix(path: str, problem: str = ""):
+    from .coding import propose_fix
+
+    return propose_fix(path, problem)
+
+
+@tool("Apply the code fix AMO just proposed (only after the user said to).")
+def code_apply():
+    from .coding import apply_pending
+
+    return apply_pending()
+
+
+@tool("Undo the last code fix AMO applied.")
+def code_undo():
+    from .coding import undo_last_fix
+
+    return undo_last_fix()
+
+
+@tool("Check AMO's own recorded bugs and fix simple ones now (tested on a copy first; runs in the background).")
+def self_repair():
+    import threading
+
+    from .db import local_now
+    from .selfrepair import due, run, status_text
+
+    pending = due(get_db(), local_now())
+    if not pending:
+        return {"text": status_text()}
+    threading.Thread(target=run, daemon=True).start()
+    return {"text": f"On it — {len(pending)} bug{'s' if len(pending) != 1 else ''} to look at. I'll test any fix on a "
+                    "copy of myself first and let you know."}
+
+
+@tool("Undo AMO's last fix to its own code.")
+def self_rollback():
+    from .selfrepair import rollback
+
+    return rollback()
+
+
 # ---------------------------------------------------------------- eyes (camera + vision model)
 @tool("Look through AMO's camera and answer a question about what's there: what do you see, what am I "
       "holding, read this, is anyone here.",
@@ -835,6 +907,11 @@ GROUPS: dict[str, tuple[list[str], str]] = {
         r"turn (on|off)|switch (on|off)|\b(on|off)\b|light|lamp|\bled\b|fan|relay|servo|motor|buzzer|beep|"
         r"display|screen|temperature|\btemp\b|humidity|sensor|device|esp32|raspberry|\bpi\b|hardware|"
         r"your (head|arm|body|eyes)|colou?r|brightness",
+    ),
+    "coding": (
+        ["code_help", "code_explain", "code_fix", "code_apply", "code_undo", "self_repair", "self_rollback"],
+        r"code|coding|bug|error|exception|traceback|script|function|python|javascript|html|css|react|"
+        r"compile|syntax|debug|program|\.py\b|\.js\b|```",
     ),
     "notes": (
         ["add_note", "find_notes"],

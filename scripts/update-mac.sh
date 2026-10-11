@@ -47,9 +47,9 @@ fi
 
 step "Updating packages"
 if command -v uv >/dev/null && [[ -x .venv/bin/python ]]; then
-  uv pip install --python .venv/bin/python -q -e .
+  uv pip install --python .venv/bin/python -q -e . "pytest>=8"   # pytest: AMO tests its own fixes
 elif [[ -x .venv/bin/pip ]]; then
-  .venv/bin/pip install -q -e .
+  .venv/bin/pip install -q -e . "pytest>=8"
 fi
 
 step "Updating voice (speaking + listening)"
@@ -73,6 +73,12 @@ fi
 echo "  fetching AMO's voice (first time only, ~64 MB)…"
 .venv/bin/python -c "from amo.voice.tts import download_piper_voice; download_piper_voice('bmo')" 2>/dev/null \
   || echo "  couldn't download the voice now — AMO will fetch it the first time it speaks"
+# One-time: AMO's code model (for coding help and fixing its own bugs), ~2 GB.
+if [[ ! -f data/.coder-v1 ]]; then
+  echo "  downloading AMO's code model (one time, ~2 GB) …"
+  .venv/bin/amo setup-coder >/dev/null 2>&1 && mkdir -p data && touch data/.coder-v1 \
+    || echo "  (skipped — run  .venv/bin/amo setup-coder  later)"
+fi
 # One-time: keep the model loaded so replies start fast (AMO warms it up at start too).
 if [[ ! -f data/.keep-alive-v2 ]]; then
   [[ -f .env ]] && sed -i '' 's/^AMO_KEEP_ALIVE=30m$/AMO_KEEP_ALIVE=-1/' .env 2>/dev/null || true

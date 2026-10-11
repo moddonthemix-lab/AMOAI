@@ -576,6 +576,9 @@ def run(verbose: bool = False) -> None:
 
     agent = Agent()
     chime = chime_wav()
+    from ..selfrepair import install as record_crashes
+
+    record_crashes()
 
     from .. import face
 

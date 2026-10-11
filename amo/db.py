@@ -333,6 +333,34 @@ MIGRATIONS: list[str] = [
         created_at TEXT NOT NULL
     );
     """,
+    # 15 — coding: AMO's own errors (for self-repair), the fixes it made, and code fixes it proposed
+    """
+    CREATE TABLE errors (
+        id INTEGER PRIMARY KEY,
+        signature TEXT NOT NULL UNIQUE,  -- exception type + where it happened
+        kind TEXT NOT NULL,
+        message TEXT,
+        traceback TEXT,
+        file TEXT,
+        line INTEGER,
+        count INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'open',   -- open | fixed | failed | ignored
+        attempts INTEGER NOT NULL DEFAULT 0,
+        repro TEXT,                    -- JSON {"tool", "args"}: how to make it happen again
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL
+    );
+    CREATE TABLE repairs (
+        id INTEGER PRIMARY KEY,
+        error_id INTEGER,
+        files TEXT,
+        diff TEXT,
+        result TEXT NOT NULL,          -- applied | tests_failed | no_fix | rolled_back
+        detail TEXT,
+        snapshot TEXT,
+        created_at TEXT NOT NULL
+    );
+    """,
 ]
 
 

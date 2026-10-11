@@ -97,7 +97,14 @@ def tick(db: Database, now: datetime | None = None) -> list[str]:
         except Exception:  # noqa: BLE001 — recall indexing is best effort
             log.exception("conversation indexing failed")
 
+    from .selfrepair import maybe_run as self_repair
     from .warmup import keep_warm
+
+    try:
+        if self_repair(db, now):  # quiet for a while + a recorded bug → try a tested fix
+            ran.append("selfrepair")
+    except Exception:  # noqa: BLE001
+        log.exception("self-repair check failed")
 
     if keep_warm():  # Ollama dropped the model (restart / keep_alive) → load it again
         ran.append("warm")

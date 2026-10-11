@@ -58,7 +58,10 @@ async def lifespan(app: FastAPI):
         # Load the models and cache AMO's prompt now, so the first question is fast.
         import threading
 
+        from ..selfrepair import install as record_crashes
         from ..warmup import warm_all
+
+        record_crashes()  # AMO's own crashes are recorded so it can fix simple ones (selfrepair.py)
 
         threading.Thread(target=warm_all, daemon=True).start()
     yield
