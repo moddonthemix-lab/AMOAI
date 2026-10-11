@@ -145,7 +145,25 @@ def _hardware(r: dict, a: dict) -> str:
     return f"Asked the {r.get('device', 'device')} to {todo} — it hasn't confirmed yet."
 
 
+def _timer(r: dict, a: dict) -> str:
+    if r.get("name"):
+        return f"{r['name'].capitalize()} timer set for {r['duration']}."
+    if r.get("message"):
+        return f"Timer set for {r['duration']} — I'll remind you to {r['message']}."
+    return f"Timer set for {r['duration']}."
+
+
+def _reminder(r: dict, a: dict) -> str:
+    if r.get("kind") == "alarm":
+        return f"Alarm set for {r['when']}."
+    if r.get("message"):
+        return f"I'll remind you {r['when']} to {r['message']}."
+    return f"Reminder set for {r['when']}."
+
+
 CONFIRM: dict[str, Callable[[dict, dict], str]] = {
+    "set_timer": _timer,
+    "set_reminder": _reminder,
     "hardware_control": _hardware,
     "remember": lambda r, a: "Got it — I'll remember that.",
     "forget": lambda r, a: "Done, I've forgotten that.",

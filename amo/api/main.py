@@ -51,6 +51,10 @@ async def lifespan(app: FastAPI):
 
         scheduler = Scheduler()
         scheduler.start()
+        from ..timers import TimerWatcher
+
+        watcher = TimerWatcher()
+        watcher.start()
         # Pre-render the "Got it" / "Let me think" phrases so they play instantly.
         import threading
 
@@ -60,6 +64,7 @@ async def lifespan(app: FastAPI):
     yield
     if scheduler:
         scheduler.stop()
+        watcher.stop()
 
 
 app = FastAPI(title="AMO", version=__version__, lifespan=lifespan)
@@ -343,6 +348,20 @@ def face_events(after: int = -1):
         return {"events": [], "last": face.latest_id(get_db()), "now": int(time.time() * 1000)}
     events = face.events_after(after, get_db())
     return {"events": events, "last": events[-1]["id"] if events else after, "now": int(time.time() * 1000)}
+
+
+@app.get("/api/timers", dependencies=[Depends(auth)])
+def timers_active():
+    """Running timers and upcoming reminders (the face shows them as countdown chips)."""
+    from .. import timers
+
+    return {"timers": timers.active(get_db()), "now": int(time.time() * 1000)}
+
+
+@app.delete("/api/timers/{timer_id}", dependencies=[Depends(auth)])
+def timers_cancel(timer_id: int):
+    get_db().execute("UPDATE timers SET status = 'cancelled' WHERE id = ? AND status = 'active'", (timer_id,))
+    return {"ok": True}
 
 
 @app.get("/api/face/now", dependencies=[Depends(auth)])

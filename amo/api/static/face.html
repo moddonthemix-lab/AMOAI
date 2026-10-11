@@ -29,6 +29,10 @@
   .dots i { width:.32em; height:.32em; border-radius:50%; background:var(--glow); opacity:.25; animation:dot 1.2s infinite; }
   .dots i:nth-child(2) { animation-delay:.2s; } .dots i:nth-child(3) { animation-delay:.4s; }
   @keyframes dot { 30% { opacity:1; transform:translateY(-.15em); } }
+  #chips { position:fixed; top:14px; right:14px; display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
+  .chip { background:rgba(94,231,255,.1); border:1px solid rgba(94,231,255,.45); color:var(--text); border-radius:999px;
+          padding:6px 14px; font-size:clamp(14px, 2.2vw, 22px); font-weight:700; font-variant-numeric:tabular-nums; }
+  .chip.urgent { background:rgba(255,208,0,.18); border-color:#ffd000; color:#ffe680; }
   #status { position:fixed; bottom:12px; left:0; right:0; text-align:center; color:var(--mut); font-size:13px; letter-spacing:.08em; text-transform:uppercase; }
   #zz { position:absolute; font-size:clamp(18px,3vw,32px); color:var(--dim); font-weight:700; }
   @media (prefers-reduced-motion: reduce) { #captions .w { transition:none; } }
@@ -52,6 +56,7 @@
   <div id="heard" class="fade" title="what AMO heard you say"></div>
   <div id="captions" aria-live="polite"></div>
 </main>
+<div id="chips" aria-label="timers"></div>
 <div id="status">connecting…</div>
 <script>
 const $ = id => document.getElementById(id);
@@ -179,6 +184,29 @@ function frame(ts) {
 }
 requestAnimationFrame(frame);
 poll();
+
+// ---------------------------------------------------------------- countdown chips ("Pasta 4:32")
+let timers = [];
+async function pollTimers() {
+  try {
+    const r = await fetch("/api/timers", {headers: auth});
+    if (r.ok) { const d = await r.json(); timers = d.timers; timerOffset = d.now - Date.now(); }
+  } catch {}
+  setTimeout(pollTimers, 2000);
+}
+let timerOffset = 0;
+function drawChips() {
+  const t = Date.now() + timerOffset, box = $("chips");
+  const soon = timers.filter(x => x.due_ms > t - 1000 && x.due_ms - t < 12 * 3600e3).slice(0, 3);
+  box.innerHTML = soon.map(x => {
+    const s = Math.max(0, Math.round((x.due_ms - t) / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+    const clock = h ? `${h}:${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}` : `${m}:${String(s % 60).padStart(2, "0")}`;
+    const name = (x.name || x.message || (x.kind === "timer" ? "Timer" : x.kind)).replace(/[&<>]/g, "");
+    return `<div class="chip${s <= 10 ? " urgent" : ""}">${name.charAt(0).toUpperCase() + name.slice(1, 18)} ${clock}</div>`;
+  }).join("");
+  setTimeout(drawChips, 250);
+}
+pollTimers(); drawChips();
 document.body.addEventListener("click", () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {}); });
 </script>
 </body>

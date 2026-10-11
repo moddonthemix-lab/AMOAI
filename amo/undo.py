@@ -40,6 +40,11 @@ def record_turn(trace: list[dict[str, Any]], db: Database | None = None) -> None
             continue
         if t["name"] in CREATES and r.get("id") and not r.get("duplicate"):
             made.append({"kind": CREATES[t["name"]], "id": r["id"]})
+        elif t["name"] in ("set_timer", "set_reminder") and r.get("id"):
+            kind = r.get("kind", "timer")
+            what = (f"the {r['name']} timer" if r.get("name") else
+                    f"the {kind} to {r['message']}" if r.get("message") else f"the {kind}")
+            made.append({"timer": r["id"], "what": what})
         elif t["name"] == "watchlist_add" and r.get("added"):
             made.append({"watch": r["added"]})
         elif t["name"] == "text_client" and r.get("drafted"):
@@ -68,7 +73,10 @@ def undo_recent(db: Database | None = None, within_minutes: float = 3) -> str | 
     done = []
     for m in last.get("made", []):
         try:
-            if "watch" in m:
+            if "timer" in m:
+                db.execute("UPDATE timers SET status = 'cancelled' WHERE id = ? AND status = 'active'", (m["timer"],))
+                done.append(f"cancelled {m['what']}")
+            elif "watch" in m:
                 remove_from_watchlist(m["watch"], db)
                 done.append(f"took {', '.join(m['watch'])} off the watchlist")
             elif "text" in m:

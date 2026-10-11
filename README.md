@@ -38,6 +38,12 @@ Just talk to it in Open WebUI (pick the **amo** model) or say it out loud:
 - **Memory** — tell it anything ("My engineer Marcus works Tuesdays") and it remembers. It also pulls facts
   out of conversations automatically, and every Sunday night writes a **weekly reflection** (what's working,
   what's slipping, what to focus on) that it carries into every future conversation.
+- **Instant answers** (no AI wait, never wrong) — "What time is it?", "What's 15% of 240?",
+  "How many days until Christmas?", "How many ounces in a pound?", "72 Fahrenheit in Celsius?"
+- **Timers & reminders** — "Set a pasta timer for 10 minutes", "Remind me in 30 seconds to stir the soup",
+  "Remind me tomorrow at 9 to call Jay", "Set an alarm for 7am", "How long left on the pasta timer?",
+  "What timers do I have?", "Cancel the pasta timer". AMO says it out loud when it goes off (alarms even in
+  quiet hours), pushes it to your phone/dashboard, and the face shows countdown chips.
 - **Long-term recall** — "What did I say about Jay's album last month?" — every past conversation is
   searchable by meaning (local embeddings + a vector index), not just saved facts
 - **Eyes** — "What do you see?", "What am I holding?", "Read this", "Is anyone here?" — a webcam, Pi camera

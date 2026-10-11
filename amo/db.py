@@ -292,6 +292,20 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX hw_commands_pending ON hw_commands(device, status);
     """,
+    # 13 — timers and reminders ("set a pasta timer for 10 minutes", "remind me tomorrow at 9 to …")
+    """
+    CREATE TABLE timers (
+        id INTEGER PRIMARY KEY,
+        kind TEXT NOT NULL,           -- timer | reminder
+        name TEXT,                    -- "pasta"
+        message TEXT NOT NULL,        -- what AMO says when it goes off
+        due_at TEXT NOT NULL,         -- local ISO time
+        status TEXT NOT NULL DEFAULT 'active',  -- active | done | cancelled | missed
+        created_at TEXT NOT NULL,
+        fired_at TEXT
+    );
+    CREATE INDEX timers_active ON timers(status, due_at);
+    """,
 ]
 
 

@@ -537,6 +537,56 @@ def strat_compare(symbols: str):
     return strat.compare(names[:8])
 
 
+# ---------------------------------------------------------------- timers & reminders
+@tool("Start a countdown timer.",
+      minutes=("number", "Length in minutes (0.5 = 30 seconds).", True),
+      label=("string", "Optional name, e.g. 'pasta'.", False),
+      message=("string", "Optional: what to say when it's done, e.g. 'stir the soup'.", False))
+def set_timer(minutes: float, label: str = "", message: str = ""):
+    from . import timers
+
+    return timers.start_timer(minutes, label, message)
+
+
+@tool("Set a reminder or alarm for a clock time / day (for 'in N minutes' use set_timer).",
+      when=("string", "YYYY-MM-DD HH:MM (local time).", True),
+      message=("string", "What to remind the user about, e.g. 'call Jay'.", False),
+      alarm=("boolean", "True for a plain wake-up alarm.", False))
+def set_reminder(when: str, message: str = "", alarm: bool = False):
+    from datetime import datetime
+
+    from . import timers
+    from .db import parse_when
+
+    iso = parse_when(when)
+    due = datetime.fromisoformat(iso if "T" in iso else iso + "T09:00")
+    return timers.add_reminder(due, message, alarm)
+
+
+@tool("List running timers and upcoming reminders.")
+def list_timers():
+    from . import timers
+
+    return {"text": timers.list_text(), "timers": timers.active()}
+
+
+@tool("Cancel a timer or reminder (or all of them).",
+      target=("string", "Which one, e.g. 'pasta' or 'call Jay'. Empty = the only one.", False),
+      all=("boolean", "Cancel every timer and reminder.", False))
+def cancel_timer(target: str = "", all: bool = False):  # noqa: A002 — the tool's parameter name
+    from . import timers
+
+    return timers.cancel(target or None, everything=bool(all))
+
+
+@tool("How long is left on a timer (or when a reminder is).",
+      target=("string", "Which one, e.g. 'pasta'. Empty = the only one.", False))
+def timer_left(target: str = ""):
+    from . import timers
+
+    return {"text": timers.time_left(target or None)}
+
+
 # ---------------------------------------------------------------- eyes (camera + vision model)
 @tool("Look through AMO's camera and answer a question about what's there: what do you see, what am I "
       "holding, read this, is anyone here.",
@@ -735,6 +785,10 @@ GROUPS: dict[str, tuple[list[str], str]] = {
         ["recall_conversations"],
         r"did i (say|tell|mention|ask)|what did (i|we)|when did (i|we)|we (talk|spoke|discuss)|last time|"
         r"remember when|told you|i mentioned|conversation|earlier (today|this week)|yesterday",
+    ),
+    "timers": (
+        ["set_timer", "set_reminder", "list_timers", "cancel_timer", "timer_left"],
+        r"timer|remind me|reminder|alarm|wake me|countdown|in \d+ (?:min|sec|hour)",
     ),
     "vision": (
         ["look"],

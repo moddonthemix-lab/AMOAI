@@ -38,7 +38,7 @@ def announce(text: str, kind: str = "info", key: str | None = None, ttl_minutes:
     if push:
         from .notify import notify
 
-        title = {"alert": "Strat alert", "reminder": "Reminder", "brief": "Morning brief",
+        title = {"alert": "Strat alert", "reminder": "Reminder", "timer": "⏰ AMO", "brief": "Morning brief",
                  "checkin": "Check-in"}.get(kind, "AMO")
         notify(title, text, "warn" if kind == "alert" else "info", db=db)
     return True
@@ -58,9 +58,10 @@ def take_pending(db: Database | None = None, now: datetime | None = None) -> lis
     """Things to say now (oldest first), marked as spoken. Expired ones are dropped."""
     db = db or get_db()
     now = now or local_now()
-    if quiet_now(now):
-        return []
-    rows = db.all("SELECT id, text, expires_at FROM announcements WHERE spoken_at IS NULL ORDER BY id")
+    # In quiet hours only timers/alarms you set yourself are spoken; everything else waits.
+    only_timers = " AND kind = 'timer'" if quiet_now(now) else ""
+    rows = db.all("SELECT id, text, expires_at FROM announcements WHERE spoken_at IS NULL"
+                  f"{only_timers} ORDER BY id")
     out = []
     for r in rows:
         db.update("announcements", r["id"], {"spoken_at": now.isoformat()})

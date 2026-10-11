@@ -42,9 +42,20 @@ def kind_of(request: str) -> str:
     return "action" if _ACTION.search(t) else "think"
 
 
+def instant(request: str) -> bool:
+    """Answered instantly without the AI (time, maths, timers…) — no "let me think" needed."""
+    try:
+        from ..quick_answers import answer
+        from ..timers import match
+
+        return bool(answer(request) or match(request))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def pick(request: str) -> str | None:
     """The phrase to say for this request (never the same one twice in a row)."""
-    if not settings.acks:
+    if not settings.acks or instant(request):
         return None
     kind = kind_of(request)
     options = phrases(kind) or phrases("think")

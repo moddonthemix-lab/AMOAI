@@ -193,8 +193,19 @@ class Agent:
         fast = None
         if user_text:
             from .integrations import pending_text
+            from .quick_answers import answer as quick_answer
+            from .timers import match as timer_match
 
-            fast = fastpath.text_reply(user_text, pending_text(self.db) is not None) or fastpath.match(user_text)
+            quick = quick_answer(user_text, now=local_now())  # time, date, math, units, countdowns
+            if quick:
+                if on_text:
+                    on_text(quick)
+                self._log(channel, user_text, quick)
+                return {"content": quick, "tool_calls": []}
+            fast = fastpath.text_reply(user_text, pending_text(self.db) is not None)
+            if not fast and not fastpath.TEXT_RE.match(user_text.strip()):
+                fast = timer_match(user_text, local_now())
+            fast = fast or fastpath.match(user_text)
         if fast:
             name, args = fast
             result = json.loads(tools.call(name, args))
@@ -205,6 +216,11 @@ class Agent:
             content = instant_reply([{"name": name, "arguments": args, "result": result}]) or ""
             if content:
                 trace.append({"name": name, "arguments": args, "result": result})
+            elif name in ("list_timers", "cancel_timer", "timer_left"):
+                content = result.get("text") or result.get("error", "")
+                trace.append({"name": name, "arguments": args, "result": result})
+            elif name in ("set_timer", "set_reminder") and "error" in result:
+                content = result["error"][:1].upper() + result["error"][1:]
             elif name == "look":
                 content = result.get("answer") or result.get("error", "")
                 if "error" not in result:
