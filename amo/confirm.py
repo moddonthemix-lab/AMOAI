@@ -165,7 +165,11 @@ CONFIRM: dict[str, Callable[[dict, dict], str]] = {
     "set_timer": _timer,
     "set_reminder": _reminder,
     "hardware_control": _hardware,
-    "remember": lambda r, a: "Got it — I'll remember that.",
+    "add_note": lambda r, a: f"Noted: “{r['text']}”.",
+    "set_pronunciation": lambda r, a: f"Got it — I'll say {r['word']} like that from now on.",
+    "set_preference": lambda r, a: f"Got it — from now on: {r['preference']}.",
+    "remember": lambda r, a: (f"Updated — that replaces “{r['replaced'][0]}”." if r.get("replaced")
+                              else "Got it — I'll remember that."),
     "forget": lambda r, a: "Done, I've forgotten that.",
     "add_client": lambda r, a: f"Added {_who(r)} to your clients.",
     "update_client": lambda r, a: f"Updated {_who(r)}.",

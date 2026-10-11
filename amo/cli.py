@@ -613,6 +613,12 @@ def cmd_brief(_a):
         print(f"\n(weather for {b['location']} — change it with AMO_LOCATION in .env)")
 
 
+def cmd_review(_a):
+    from .selfreview import review
+
+    print(review()["text"])
+
+
 def cmd_learn(_a):
     from .learning import learn_from_conversations
 
@@ -727,6 +733,8 @@ def main(argv: list[str] | None = None) -> None:
 
     sub.add_parser("brief", help="print today's brief").set_defaults(fn=cmd_brief)
     sub.add_parser("learn", help="learn from recent conversations now").set_defaults(fn=cmd_learn)
+    sub.add_parser("review", help="AMO's self-review: your corrections this week and what it learned").set_defaults(
+        fn=cmd_review)
     sub.add_parser("reflect", help="run the weekly reflection now").set_defaults(fn=cmd_reflect)
 
     args = p.parse_args(argv)

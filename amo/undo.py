@@ -21,7 +21,7 @@ KEY = "last_turn"
 CREATES = {
     "add_goal": "goals", "add_client": "clients", "book_session": "sessions", "record_payment": "payments",
     "add_resale_item": "resale", "log_trade": "trades", "add_cravvr_task": "cravvr",
-    "add_trading_rule": "rules", "remember": "memories",
+    "add_trading_rule": "rules", "remember": "memories", "add_note": "notes",
 }
 CHANGES = {"update_client", "update_session", "complete_session", "list_resale_item", "mark_item_sold",
            "close_trade", "check_in_goal", "update_cravvr_task", "update_record", "delete_record",

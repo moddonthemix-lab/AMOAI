@@ -89,9 +89,10 @@ def tick(db: Database, now: datetime | None = None) -> list[str]:
     # Long-term recall: embed past conversations in the background once you've gone quiet.
     if last_msg and last_msg <= (now - LEARN_IDLE).isoformat():
         try:
+            from .notes import index_missing
             from .recall import index_conversations
 
-            if index_conversations(db):
+            if index_conversations(db) + index_missing(db):
                 ran.append("recall_index")
         except Exception:  # noqa: BLE001 — recall indexing is best effort
             log.exception("conversation indexing failed")
@@ -100,6 +101,16 @@ def tick(db: Database, now: datetime | None = None) -> list[str]:
 
     if keep_warm():  # Ollama dropped the model (restart / keep_alive) → load it again
         ran.append("warm")
+
+    if now.hour >= 3 and db.get_kv("last_tidy") != today:  # nightly: merge duplicate / outdated facts
+        try:
+            from .memory import Memory
+
+            Memory(db).tidy()
+            db.set_kv("last_tidy", today)
+            ran.append("tidy")
+        except Exception:  # noqa: BLE001
+            log.exception("memory tidy failed")
 
     from .integrations import nightly_backup
     from .proactive import run_jobs
@@ -112,6 +123,19 @@ def tick(db: Database, now: datetime | None = None) -> list[str]:
         log.exception("nightly backup failed")
 
     week_key = f"{now.isocalendar()[0]}-W{now.isocalendar()[1]}"
+    if (now.weekday() == REFLECTION_WEEKDAY and now.hour >= REFLECTION_HOUR
+            and db.get_kv("last_selfreview") != week_key):
+        try:
+            from .proactive import announce
+            from .selfreview import review
+
+            r = review(db, now)
+            db.set_kv("last_selfreview", week_key)
+            announce("Weekly self-review: " + r["text"], "checkin", f"selfreview:{week_key}",
+                     ttl_minutes=180, db=db, now=now)
+            ran.append("selfreview")
+        except Exception:  # noqa: BLE001
+            log.exception("self-review failed")
     if (now.weekday() == REFLECTION_WEEKDAY and now.hour >= REFLECTION_HOUR
             and db.get_kv("last_reflection") != week_key):
         try:

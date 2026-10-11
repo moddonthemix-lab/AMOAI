@@ -155,6 +155,11 @@ ENTITIES: dict[str, Entity] = {e.kind: e for e in [
         Field("due_date", "Due", "date"),
         Field("notes", "Notes", "longtext", show=False),
     ), ("title",), order="status = 'done', priority DESC, id"),
+    Entity("notes", "note", "Notes", "notes", (
+        Field("text", "Note", "longtext", required=True),
+        Field("tags", "Tags"),
+        Field("created_at", "When", "datetime", show=False),
+    ), ("text", "tags"), order="id DESC"),
     Entity("memories", "memory", "Memory", "memories", (
         Field("content", "What AMO knows", "longtext", required=True),
         Field("category", "Category", "select",
@@ -167,7 +172,7 @@ KIND_ALIASES = {
     "goal": "goals", "client": "clients", "session": "sessions", "booking": "sessions",
     "payment": "payments", "item": "resale", "resale item": "resale", "inventory": "resale",
     "product": "resale", "trade": "trades", "rule": "rules", "trading rule": "rules",
-    "task": "cravvr", "cravvr task": "cravvr", "ticker": "watchlist", "watch list": "watchlist", "memory": "memories", "note": "memories", "fact": "memories",
+    "task": "cravvr", "cravvr task": "cravvr", "ticker": "watchlist", "watch list": "watchlist", "memory": "memories", "note": "notes", "idea": "notes", "fact": "memories",
 }
 
 

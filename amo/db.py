@@ -306,6 +306,33 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX timers_active ON timers(status, due_at);
     """,
+    # 14 — smarter: replaced facts, quick notes, pronunciations, corrections (for the weekly self-review)
+    """
+    ALTER TABLE memories ADD COLUMN superseded_by INTEGER;
+    CREATE TABLE notes (
+        id INTEGER PRIMARY KEY,
+        text TEXT NOT NULL,
+        tags TEXT NOT NULL DEFAULT '',     -- "beat, idea"
+        embedding TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE TRIGGER dv_notes_I AFTER INSERT ON notes BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_notes_U AFTER UPDATE ON notes BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_notes_D AFTER DELETE ON notes BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TABLE pronunciations (
+        id INTEGER PRIMARY KEY,
+        word TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        say TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE corrections (
+        id INTEGER PRIMARY KEY,
+        kind TEXT NOT NULL,            -- misheard | undo | pronunciation | shorter
+        said TEXT,                     -- what AMO acted on
+        meant TEXT,                    -- what you actually meant
+        created_at TEXT NOT NULL
+    );
+    """,
 ]
 
 

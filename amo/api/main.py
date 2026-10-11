@@ -189,12 +189,14 @@ async def chat_completions(req: ChatRequest):
 @app.post("/v1/audio/transcriptions", dependencies=[Depends(auth)])
 async def transcriptions(file: UploadFile = File(...), model: str = Form("whisper-1"),
                          language: Optional[str] = Form(None)):
+    from ..voice.listen import WAKE_PROMPT, vocab
     from ..voice.stt import VoiceUnavailable, transcribe
 
     data = await file.read()
     try:
         size = model if model and not model.startswith("whisper") else None  # "tiny.en" for wake checks
-        text = await run_in_threadpool(transcribe, data, language or "en", size)
+        # Hint Whisper with your clients' names and tickers so it spells them right.
+        text = await run_in_threadpool(transcribe, data, language or "en", size, WAKE_PROMPT if size else vocab())
     except VoiceUnavailable as e:
         raise HTTPException(503, str(e)) from e
     return {"text": text}

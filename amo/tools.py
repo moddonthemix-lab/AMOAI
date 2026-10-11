@@ -121,7 +121,8 @@ def call(name: str, arguments: dict[str, Any] | str | None) -> str:
 )
 def remember(content: str, category: str = "general", importance: int = 3):
     m = Memory(get_db()).add(content, category, importance, source="chat")
-    return {"saved": True, "id": m["id"], "duplicate": m.get("duplicate", False)}
+    return {"saved": True, "id": m["id"], "duplicate": m.get("duplicate", False),
+            **({"replaced": m["replaced"]} if m.get("replaced") else {})}
 
 
 @tool("Search long-term memory for facts relevant to a question.",
@@ -139,6 +140,40 @@ def recall_conversations(query: str):
 
     hits = search_conversations(query, limit=5)
     return {"conversations": hits} if hits else {"conversations": [], "note": "nothing found in past conversations"}
+
+
+@tool("Save how the user wants AMO to answer or behave from now on (style, length, what to call them).",
+      preference=("string", "The preference, e.g. 'give me the numbers first'.", True))
+def set_preference(preference: str):
+    from .profile import save_preference
+
+    return save_preference(preference)
+
+
+@tool("Teach AMO how to pronounce a word or name (used in its voice from now on).",
+      say=("string", "How to say it, spelled the way it sounds, e.g. 'kah-reem'.", True),
+      word=("string", "The word as written, e.g. 'Karim'.", False))
+def set_pronunciation(say: str, word: str = ""):
+    from .pronounce import save
+
+    return save(word, say)
+
+
+@tool("Save a quick note for the user (an idea, a to-do, anything they want to keep word for word).",
+      text=("string", "The note, in the user's words.", True))
+def add_note(text: str):
+    from .notes import add
+
+    return add(text)
+
+
+@tool("Find the user's notes by topic (or the latest ones if no topic).",
+      query=("string", "What the notes are about, e.g. 'beats'. Empty = latest.", False),
+      last=("boolean", "Just the most recent note.", False))
+def find_notes(query: str = "", last: bool = False):
+    from .notes import find
+
+    return find(query, last=bool(last))
 
 
 @tool("Forget (archive) a memory that is wrong or outdated.",
@@ -801,9 +836,14 @@ GROUPS: dict[str, tuple[list[str], str]] = {
         r"display|screen|temperature|\btemp\b|humidity|sensor|device|esp32|raspberry|\bpi\b|hardware|"
         r"your (head|arm|body|eyes)|colou?r|brightness",
     ),
+    "notes": (
+        ["add_note", "find_notes"],
+        r"\bnotes?\b|jot|write (?:this|that|it) down|idea",
+    ),
     "admin": (
-        ["forget", "send_notification"],
-        r"forget|wrong|outdated|remind|notify|notification|alert",
+        ["forget", "send_notification", "set_preference", "set_pronunciation"],
+        r"forget|wrong|outdated|remind|notify|notification|alert|from now on|going forward|prefer|pronounc|"
+        r"always|never|shorter|too long|call me",
     ),
 }
 _GROUP_RE = {g: re.compile(rx, re.I) for g, (_, rx) in GROUPS.items()}

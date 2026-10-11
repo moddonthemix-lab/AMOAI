@@ -44,6 +44,16 @@ Just talk to it in Open WebUI (pick the **amo** model) or say it out loud:
   "Remind me tomorrow at 9 to call Jay", "Set an alarm for 7am", "How long left on the pasta timer?",
   "What timers do I have?", "Cancel the pasta timer". AMO says it out loud when it goes off (alarms even in
   quiet hours), pushes it to your phone/dashboard, and the face shows countdown chips.
+- **Quick notes** — "Note: beat idea, 140 BPM, dark piano", "What notes do I have about beats?", "Read my last
+  note" (also on the dashboard's Notes & Memory tab)
+- **Learns how you like it** — "From now on, give me the numbers first", "That's too long", "Keep it short";
+  it also knows your most frequent clients and tickers and hints Whisper with them so names come out right
+- **Pronunciations** — "No, it's pronounced kah-REEM" (it picks the word from what it just said), "Say Nguyen
+  like win" — used in its voice everywhere from then on
+- **Keeps its memory tidy** — "Jay's rate is $60 now" replaces the old $50 fact instead of keeping both;
+  duplicates are merged every night
+- **Weekly self-review** (Sunday evening, or `amo review`) — "This week you corrected me 3 times (2 on times,
+  1 on names). What I learned: I'll assume PM for 1 to 6 o'clock… These might be out of date: …"
 - **Long-term recall** — "What did I say about Jay's album last month?" — every past conversation is
   searchable by meaning (local embeddings + a vector index), not just saved facts
 - **Eyes** — "What do you see?", "What am I holding?", "Read this", "Is anyone here?" — a webcam, Pi camera

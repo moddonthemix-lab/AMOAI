@@ -51,7 +51,7 @@ How you work:
 {voice_hint}{personality}
 What you know about {owner}:
 {core}
-{reflection}"""
+{favorites}{reflection}"""
 
 # The system prompt above stays byte-for-byte the same from turn to turn, so Ollama can reuse the
 # work it already did on it (prompt caching) and start answering in about a second instead of
@@ -87,6 +87,15 @@ VOICE_HINT = (
 )
 
 
+def _favorites_line(db: Database) -> str:
+    try:
+        from .profile import prompt_line
+
+        return prompt_line(db)
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _format_memories(rows: list[dict[str, Any]]) -> str:
     return "\n".join(f"- [{r['category']}] {r['content']}" for r in rows)
 
@@ -114,6 +123,7 @@ class Agent:
             voice_hint=VOICE_HINT if channel == "voice" else "",
             personality=personality,
             core=_format_memories(core) or "- (nothing yet — learn as you go)",
+            favorites=_favorites_line(self.db),
             reflection=("\nYour latest weekly reflection (patterns you noticed):\n" + latest["summary"] + "\n")
             if latest else "",
         )
@@ -164,15 +174,26 @@ class Agent:
         from . import undo
 
         undone = None
+        from .selfreview import log_correction
+
+        earlier = [m["content"] for m in history[:-1] if m["role"] == "user" and isinstance(m["content"], str)]
+        previous_request = earlier[-1] if earlier else ""
         if user_text and undo.UNDO_RE.match(user_text.strip()):
             content = undo.undo_last(self.db)
+            if content.startswith("Undid"):
+                log_correction("undo", previous_request, "", self.db)
             if on_text:
                 on_text(content)
             self._log(channel, user_text, content)
             return {"content": content, "tool_calls": []}
         meant = fastpath.correction(user_text) if user_text else None
+        from .pronounce import PATTERNS as PRONOUNCE
+
+        if meant is not None and any(rx.match(meant.rstrip(".!")) for rx in PRONOUNCE):
+            meant = None  # "no, I said it's pronounced…" — a pronunciation lesson, nothing to undo
         if meant is not None:
             undone = undo.undo_recent(self.db)
+            log_correction("misheard", previous_request, meant, self.db)
             if not meant:  # "you misheard me" — ask what they said
                 content = ((undone + " ") if undone else "") + "Sorry — what did you say?"
                 if on_text:
@@ -221,7 +242,16 @@ class Agent:
                 return {"content": quick, "tool_calls": []}
             fast = fastpath.text_reply(user_text, pending_text(self.db) is not None)
             if not fast and not fastpath.TEXT_RE.match(user_text.strip()):
-                fast = timer_match(user_text, local_now())
+                from .profile import match as preference_match
+
+                from .pronounce import match as pronounce_match
+
+                last_reply = next((m["content"] for m in reversed(history[:-1])
+                                   if m["role"] == "assistant" and isinstance(m["content"], str)), "")
+                from .notes import match as notes_match
+
+                fast = (timer_match(user_text, local_now()) or pronounce_match(user_text, last_reply)
+                        or preference_match(user_text) or notes_match(user_text))
             fast = fast or fastpath.match(user_text)
         if fast:
             name, args = fast
@@ -233,10 +263,10 @@ class Agent:
             content = instant_reply([{"name": name, "arguments": args, "result": result}]) or ""
             if content:
                 trace.append({"name": name, "arguments": args, "result": result})
-            elif name in ("list_timers", "cancel_timer", "timer_left"):
+            elif name in ("list_timers", "cancel_timer", "timer_left", "find_notes"):
                 content = result.get("text") or result.get("error", "")
                 trace.append({"name": name, "arguments": args, "result": result})
-            elif name in ("set_timer", "set_reminder") and "error" in result:
+            elif name in ("set_timer", "set_reminder", "set_pronunciation", "set_preference") and "error" in result:
                 content = result["error"][:1].upper() + result["error"][1:]
             elif name == "look":
                 content = result.get("answer") or result.get("error", "")

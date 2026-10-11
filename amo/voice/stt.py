@@ -45,11 +45,13 @@ def clean_transcript(text: str) -> str:
     return t
 
 
-def transcribe(audio: bytes | str, language: str | None = "en", size: str | None = None) -> str:
+def transcribe(audio: bytes | str, language: str | None = "en", size: str | None = None,
+               prompt: str | None = None) -> str:
     """Transcribe a WAV/MP3/WebM file path or raw file bytes (size: e.g. "tiny.en")."""
     model = _get_model(size)
     src = io.BytesIO(audio) if isinstance(audio, (bytes, bytearray)) else audio
-    segments, _info = model.transcribe(src, language=language, vad_filter=True, beam_size=1)
+    segments, _info = model.transcribe(src, language=language, vad_filter=True, beam_size=1,
+                                       initial_prompt=prompt)
     return clean_transcript(" ".join(s.text.strip() for s in segments))
 
 

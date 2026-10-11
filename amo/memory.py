@@ -47,6 +47,39 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower().rstrip("."))
 
 
+_NUM = re.compile(r"\$?\d+(?:[.,]\d+)?%?|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|"
+                  r"forty|fifty|hundred|thousand)\b", re.I)
+_DAYS = re.compile(r"\b(?:mon|tues|wednes|thurs|fri|satur|sun)days?\b|\b(?:am|pm)\b", re.I)
+_FILLER = {"now", "actually", "anymore", "currently", "these", "days", "no", "longer", "not"}
+
+
+def _words(text: str) -> set[str]:
+    """Meaningful words, without numbers, days and filler — the *subject* of a fact."""
+    t = _DAYS.sub(" ", _NUM.sub(" ", text.lower().replace("’", "'")))
+    return {w.strip(".'s") for w in _WORD.findall(t)} - _STOP - _FILLER - {""}
+
+
+def _values(text: str) -> set[str]:
+    """The changeable parts of a fact: numbers, prices, days, times."""
+    return {v.lower().replace(",", "") for v in _NUM.findall(text) + _DAYS.findall(text)}
+
+
+def _jaccard(a: set, b: set) -> float:
+    return len(a & b) / len(a | b) if a and b else 0.0
+
+
+def replaces(new: str, old: str) -> bool:
+    """Is `new` an updated version of `old`? ("Jay's rate is $60 now" vs "Jay's rate is $50")
+    Same subject, different number / price / day / time."""
+    va, vb = _values(new), _values(old)
+    return bool(va and vb and va != vb and _jaccard(_words(new), _words(old)) >= 0.6)
+
+
+def near_duplicate(a: str, b: str) -> bool:
+    """Same fact, worded a little differently (and no conflicting numbers)."""
+    return _values(a) == _values(b) and _jaccard(_words(a), _words(b)) >= 0.8
+
+
 class Memory:
     def __init__(self, db: Database | None = None, use_embeddings: bool = True):
         self.db = db or get_db()
@@ -77,10 +110,18 @@ class Memory:
                 )
                 return {**self.get(row["id"]), "duplicate": True}
 
+        # Updated facts replace the old version instead of piling up next to it.
+        replaced = [r for r in self.db.all(
+            "SELECT id, content, importance FROM memories WHERE archived = 0 AND category IN (?, 'general', "
+            "'person', 'preference')", (category,))
+            if replaces(content, r["content"]) or near_duplicate(content, r["content"])]
+
         embedding = None
         if self.use_embeddings:
             vec = get_llm().embed(content)
             embedding = json.dumps(vec) if vec else None
+        if replaced:
+            importance = max([importance] + [r["importance"] for r in replaced])
         mem_id = self.db.insert(
             "memories",
             {
@@ -92,7 +133,38 @@ class Memory:
                 "created_at": now_iso(),
             },
         )
-        return self.get(mem_id)
+        for r in replaced:
+            self.db.update("memories", r["id"], {"archived": 1, "superseded_by": mem_id})
+        out = self.get(mem_id)
+        if replaced:
+            out["replaced"] = [r["content"] for r in replaced]
+        return out
+
+    def tidy(self) -> dict[str, int]:
+        """Nightly: merge facts that say the same thing, and let newer versions replace older ones."""
+        rows = self.db.all("SELECT id, content, category, importance FROM memories WHERE archived = 0 ORDER BY id")
+        merged = 0
+        alive = {r["id"]: r for r in rows}
+        for i, old in enumerate(rows):
+            if old["id"] not in alive:
+                continue
+            for new in rows[i + 1:]:
+                if new["id"] not in alive or new["category"] != old["category"]:
+                    continue
+                if replaces(new["content"], old["content"]) or near_duplicate(new["content"], old["content"]):
+                    self.db.update("memories", new["id"], {"importance": max(new["importance"], old["importance"])})
+                    self.db.update("memories", old["id"], {"archived": 1, "superseded_by": new["id"]})
+                    alive.pop(old["id"])
+                    merged += 1
+                    break
+        return {"merged": merged}
+
+    def stale(self, days: int = 90, limit: int = 5) -> list[dict[str, Any]]:
+        """Facts with numbers/prices/days that haven't come up in a while — worth double-checking."""
+        rows = self.db.all(
+            "SELECT id, content, created_at, last_used_at FROM memories WHERE archived = 0 "
+            "AND COALESCE(last_used_at, created_at) < ? ORDER BY importance DESC, created_at", (days_ago(days),))
+        return [r for r in rows if _values(r["content"])][:limit]
 
     def get(self, mem_id: int) -> dict[str, Any] | None:
         row = self.db.one(

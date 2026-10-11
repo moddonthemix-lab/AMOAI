@@ -73,9 +73,10 @@ _lock = threading.Lock()
 
 def clean_for_speech(text: str) -> str:
     """Make written text sound natural spoken (see speakable.py)."""
+    from ..pronounce import apply
     from .speakable import to_speech
 
-    return to_speech(text)
+    return to_speech(apply(text))  # your taught pronunciations ("Karim" → "kah-reem")
 
 
 # ---------------------------------------------------------------- style resolution

@@ -118,6 +118,10 @@ def barge_in(heard: str, being_said: str) -> tuple[bool, str, bool]:
     words = [w for w in h.split() if len(w) > 2]
     if all(w in said for w in h.split()) or (words and sum(w in said for w in words) / len(words) >= 0.6):
         return False, "", False  # echo of AMO's own voice
+    from ..pronounce import PATTERNS
+
+    if any(rx.match(heard.strip().rstrip(".!")) for rx in PATTERNS):
+        return True, heard.strip(), False  # "No, it's pronounced kah-reem" — a lesson, not a mishearing
     meant = correction(heard.strip())
     if meant is not None:
         return True, meant, True
@@ -520,6 +524,22 @@ class MicSegmenter:
                     chunks = []
 
 
+_vocab: dict[str, Any] = {"at": 0.0, "text": "Hey AMO."}
+
+
+def vocab() -> str:
+    """Whisper's hint: your clients' names and tickers, so it spells them right (refreshed every 10 min)."""
+    if time.monotonic() - _vocab["at"] > 600:
+        try:
+            from ..profile import whisper_prompt
+
+            _vocab["text"] = whisper_prompt()
+        except Exception:  # noqa: BLE001
+            pass
+        _vocab["at"] = time.monotonic()
+    return _vocab["text"]
+
+
 def chime_wav() -> bytes:
     """A short two-note 'I'm listening' sound."""
     import io
@@ -639,7 +659,7 @@ def run(verbose: bool = False) -> None:
                         speaker.stop()
                         print(f"   ✋ heard “{heard}” — stopping")
                         if rest:  # re-read what you said with the better model
-                            better = transcribe_array(seg, prompt="AMO")
+                            better = transcribe_array(seg, prompt=vocab())
                             hit2, rest2, corr2 = barge_in(better, "")
                             rest, corrected = (rest2, corr2) if hit2 else (better, corrected)
                         interrupt = rest
@@ -652,7 +672,7 @@ def run(verbose: bool = False) -> None:
     threading.Thread(target=acks.prewarm, daemon=True).start()
     # Load the command model now too (the wake model loads below), so the first request isn't slow.
     threading.Thread(target=lambda: transcribe_array(mic.np.zeros(SAMPLE_RATE // 2, dtype="float32"),
-                                                     prompt="AMO"), daemon=True).start()
+                                                     prompt=vocab()), daemon=True).start()
 
     from .wake import StreamingWake, WakeEvent, make_detector
 
@@ -664,13 +684,13 @@ def run(verbose: bool = False) -> None:
 
     def wake_text(seg) -> str:
         if isinstance(seg, WakeEvent):  # the engine already heard "Hey AMO"
-            return "Hey AMO " + (transcribe_array(seg.audio, prompt="AMO") if seg.audio is not None else "")
+            return "Hey AMO " + (transcribe_array(seg.audio, prompt=vocab()) if seg.audio is not None else "")
         return transcribe_array(seg, model=settings.wake_model, prompt=WAKE_PROMPT)
 
     def command_text(seg) -> str:
         if isinstance(seg, WakeEvent):
-            return "Hey AMO " + (transcribe_array(seg.audio, prompt="AMO") if seg.audio is not None else "")
-        return transcribe_array(seg, prompt="AMO")
+            return "Hey AMO " + (transcribe_array(seg.audio, prompt=vocab()) if seg.audio is not None else "")
+        return transcribe_array(seg, prompt=vocab())
 
     listener = Listener(
         segments=mic,
