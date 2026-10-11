@@ -65,3 +65,55 @@ def test_long_talk_is_capped():
     ep = Endpointer(max_seconds=5)
     events = run(ep, quiet(1) + speech(8))
     assert ("end", 1 * 20 + 5 * 20 - 1) in events or [e for e, _ in events][:2] == ["start", "end"]
+
+
+def test_transcribe_while_talking():
+    """A pause that turns out to be the end → the text was already being made; talking on → dropped."""
+    import time as _t
+
+    from amo.voice.listen import Speculator
+
+    calls = []
+
+    def slow_transcribe(audio):
+        calls.append(len(audio))
+        _t.sleep(0.05)
+        return f"text of {len(audio)} frames"
+
+    def utterance(spec, frames):
+        """frames: list of 'S' (speech) / '.' (quiet) after the start; returns the guess future or None."""
+        ep = Endpointer(end_silence=0.9)
+        for _ in range(10):
+            ep.feed(0.003)
+        chunks = []
+        for f in "SSS" + frames + "." * 30:
+            st = ep.feed(0.06 if f == "S" else 0.003)
+            if st == "start":
+                chunks = [1, 1, 1]
+                spec.reset()
+            elif st == "speech":
+                chunks.append(1)
+                spec.frame(st, ep.since_speech, len(chunks), lambda c=list(chunks): c)
+            elif st in ("end", "noise"):
+                return spec.take()
+        return None
+
+    spec = Speculator(slow_transcribe)
+    spec.on = True
+    # 2 s of talking, then quiet: the guess started 350 ms into the pause and is the answer
+    fut = utterance(spec, "S" * 40)
+    assert fut is not None and fut.result().startswith("text of") and len(calls) == 1
+    # talk, pause, talk again: the first guess is dropped (the final one covers everything)
+    calls.clear()
+    fut = utterance(spec, "S" * 30 + "." * 8 + "S" * 20)
+    text = fut.result()
+    spec.pool.shutdown(wait=True)
+    assert len(calls) == 2 and text == f"text of {calls[-1]} frames" and calls[-1] > calls[0]
+    spec = Speculator(slow_transcribe)
+    spec.on = True
+    # too short to bother
+    calls.clear()
+    assert utterance(spec, "S" * 5) is None and calls == []
+    # idle listening ("Hey AMO" detection): never runs
+    spec.on = False
+    assert utterance(spec, "S" * 40) is None

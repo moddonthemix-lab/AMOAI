@@ -172,9 +172,16 @@ class Listener:
     history: list[dict[str, str]] = field(default_factory=list)
 
     def next_utterance(self, timeout: float) -> Any | None:
-        for seg in self.segments(timeout):
-            return seg
-        return None
+        spec = getattr(self.segments, "speculator", None)
+        if spec is not None:
+            spec.on = True  # transcribe while you talk — only for requests, not idle chatter
+        try:
+            for seg in self.segments(timeout):
+                return seg
+            return None
+        finally:
+            if spec is not None:
+                spec.on = False
 
     def handle(self, command: str) -> bool:
         """Act on one command. Returns True if the conversation should continue."""
@@ -419,6 +426,46 @@ class Endpointer:
         return "speech"
 
 
+class Speculator:
+    """Transcribe while you talk: at a pause mid-utterance (≥ 0.35 s quiet after ≥ 1.2 s of talking)
+    the audio so far is sent to Whisper in the background. If the pause turns out to be the end of
+    what you said, the text is already done (or nearly) when the end-of-speech wait finishes — no
+    waiting for Whisper afterwards. If you keep talking, that guess is dropped."""
+
+    PAUSE_FRAMES = 7    # 350 ms of quiet
+    MIN_FRAMES = 24     # after at least 1.2 s of utterance
+
+    def __init__(self, transcribe: Callable[[Any], Any] | None = None):
+        from concurrent.futures import ThreadPoolExecutor
+
+        self.transcribe = transcribe
+        self.on = False  # only while AMO is waiting for a request (not while idle, listening for "Hey AMO")
+        self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="amo-stt") if transcribe else None
+        self.reset()
+
+    def reset(self) -> None:
+        self.future: Any = None
+        self.covered = 0     # frames the current guess covers
+        self.valid = False
+
+    def frame(self, state: str, since_speech: int, n_frames: int, audio: Callable[[], Any]) -> None:
+        """Call after every frame of an active utterance."""
+        if not self.pool or not self.on:
+            return
+        if since_speech == 0 and self.covered and n_frames > self.covered:
+            self.valid = False  # you kept talking after the guess
+        if (state == "speech" and since_speech == self.PAUSE_FRAMES and n_frames >= self.MIN_FRAMES
+                and not (self.valid and self.covered == n_frames)):
+            self.future = self.pool.submit(self.transcribe, audio())
+            self.covered, self.valid = n_frames, True
+
+    def take(self) -> Any:
+        """At the end of the utterance: the background transcription if it still applies, else None."""
+        fut = self.future if self.valid else None
+        self.reset()
+        return fut
+
+
 class MicSegmenter:
     """Splits microphone audio into utterances (see Endpointer for how it decides)."""
 
@@ -435,6 +482,8 @@ class MicSegmenter:
         self.end = Endpointer(sensitivity=max(sensitivity, 1.5),
                               end_silence=settings.end_silence if silence is None else silence,
                               max_seconds=max_seconds)
+        self.speculator = Speculator()  # run() gives it a transcriber (transcribe while you talk)
+        self.guess: Any = None          # the finished utterance's background transcription, if any
         self.stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32", blocksize=BLOCK)
         self.stream.start()
         self.calibrate()
@@ -515,11 +564,17 @@ class MicSegmenter:
                 elif state == "start":
                     chunks = pre + [frame]
                     pre = []
+                    self.speculator.reset()
                 elif state == "speech":
                     chunks.append(frame)
+                    self.speculator.frame(state, self.end.since_speech, len(chunks),
+                                          lambda c=list(chunks): np.concatenate(c))
                 elif state in ("end", "noise"):
+                    guess = self.speculator.take()
                     if state == "end":
+                        self.guess = guess
                         yield np.concatenate(chunks)
+                        self.guess = None
                         deadline = time.monotonic() + timeout if timeout else None
                     chunks = []
 
@@ -571,6 +626,7 @@ def run(verbose: bool = False) -> None:
 
     try:
         mic = MicSegmenter(sensitivity=settings.wake_sensitivity, meter=verbose)
+        mic.speculator = Speculator(lambda audio: transcribe_array(audio, prompt=vocab()))
     except ImportError as e:
         raise VoiceUnavailable('pip install -e ".[voice]" for microphone support') from e
 
@@ -717,6 +773,12 @@ def run(verbose: bool = False) -> None:
         started = time.monotonic()
         if isinstance(seg, WakeEvent):
             text = "Hey AMO " + (transcribe_array(seg.audio, prompt=vocab()) if seg.audio is not None else "")
+        elif mic.guess is not None:  # transcribed while you were still talking
+            try:
+                text = mic.guess.result(timeout=30)
+            except Exception:  # noqa: BLE001
+                text = transcribe_array(seg, prompt=vocab())
+            mic.guess = None
         else:
             text = transcribe_array(seg, prompt=vocab())
         woke, rest = match_wake(text)
