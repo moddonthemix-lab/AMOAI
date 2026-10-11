@@ -201,7 +201,9 @@ async def transcriptions(file: UploadFile = File(...), model: str = Form("whispe
 
     data = await file.read()
     try:
-        size = model if model and not model.startswith("whisper") else None  # "tiny.en" for wake checks
+        # "tiny.en" for wake checks; only known sizes (a client can't make AMO download any model it names)
+        known = {"tiny.en", "tiny", "base.en", "base", "small.en", "small", settings.whisper_model}
+        size = model if model in known else None
         # Hint Whisper with your clients' names and tickers so it spells them right.
         text = await run_in_threadpool(transcribe, data, language or "en", size, WAKE_PROMPT if size else vocab())
     except VoiceUnavailable as e:
@@ -416,7 +418,7 @@ async def vision(file: UploadFile = File(...), question: str = Form("")):
         answer = await run_in_threadpool(describe, image, question)
     except (VisionUnavailable, LLMError) as e:
         raise HTTPException(503, str(e)) from e
-    return {"answer": answer, "faces": faces_in(image)}
+    return {"answer": answer, "faces": await run_in_threadpool(faces_in, image)}
 
 
 @app.get("/api/camera/last", dependencies=[Depends(auth)])

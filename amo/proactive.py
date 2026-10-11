@@ -50,7 +50,10 @@ def quiet_now(now: datetime | None = None) -> bool:
     spec = settings.quiet_hours.strip()
     if not spec or "-" not in spec:
         return False
-    start, end = (int(x) for x in spec.split("-", 1))
+    try:  # "22-8" or "22:00-08:00"
+        start, end = (int(x.strip().split(":")[0]) for x in spec.split("-", 1))
+    except ValueError:
+        return False
     h = (now or local_now()).hour
     return (start <= h or h < end) if start > end else (start <= h < end)
 
@@ -64,8 +67,10 @@ def take_pending(db: Database | None = None, now: datetime | None = None) -> lis
     rows = db.all("SELECT id, text, expires_at FROM announcements WHERE spoken_at IS NULL"
                   f"{only_timers} ORDER BY id")
     out = []
-    for r in rows:
-        db.update("announcements", r["id"], {"spoken_at": now.isoformat()})
+    for r in rows:  # claim each one, so two listeners never both say it
+        if not db.execute("UPDATE announcements SET spoken_at = ? WHERE id = ? AND spoken_at IS NULL",
+                          (now.isoformat(), r["id"])):
+            continue
         if not r["expires_at"] or r["expires_at"] >= now.isoformat():
             out.append(r["text"])
     return out

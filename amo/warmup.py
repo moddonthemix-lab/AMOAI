@@ -102,6 +102,11 @@ def keep_warm(every: float = 300) -> bool:
     global _last_check
     if time.monotonic() - _last_check < every:
         return False
+    try:  # only when you asked for the model to stay loaded (keep_alive -1); otherwise unloading is on purpose
+        if float(settings.keep_alive) >= 0:
+            return False
+    except ValueError:  # "10m", "1h": a time limit — respect it
+        return False
     _last_check = time.monotonic()
     loaded = loaded_models()
     if loaded is None or any(_same(m, settings.chat_model) for m in loaded):

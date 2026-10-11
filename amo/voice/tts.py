@@ -142,8 +142,16 @@ def piper_installed() -> bool:
     return True
 
 
+_download_lock = threading.Lock()
+
+
 def download_piper_voice(voice_name: str) -> Path:
     """Fetch a Piper voice (e.g. en_GB-alan-medium) from the official voice repo."""
+    with _download_lock:  # two first replies at once must not download (and write) the same file twice
+        return _download_piper_voice(voice_name)
+
+
+def _download_piper_voice(voice_name: str) -> Path:
     voice_name = split_speaker(voice_name)[0]
     if voice_name in CUSTOM_VOICES:
         dest = piper_path(voice_name)
@@ -165,7 +173,9 @@ def download_piper_voice(voice_name: str) -> Path:
         target = Path(str(dest) + suffix)
         if not target.exists():
             url = f"{PIPER_BASE}/{lang}/{locale}/{speaker}/{quality}/{voice_name}.onnx{suffix}"
-            urllib.request.urlretrieve(url, target)
+            tmp = target.with_name(target.name + ".part")  # a cut-off download never looks like a voice
+            urllib.request.urlretrieve(url, tmp)
+            tmp.replace(target)
     return dest
 
 

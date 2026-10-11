@@ -23,7 +23,8 @@ from .db import Database, get_db, local_now, now_iso, today
 
 # ------------------------------------------------------------------ calendar (iCalendar feed)
 def _esc(text: str) -> str:
-    return str(text).replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+    return (str(text).replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+            .replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\\n"))
 
 
 def _dt(value: datetime) -> str:
@@ -49,8 +50,8 @@ def calendar_ics(db: Database | None = None) -> str:
             d = date.fromisoformat(s["starts_at"][:10])
             when = [f"DTSTART;VALUE=DATE:{d:%Y%m%d}", f"DTEND;VALUE=DATE:{d + timedelta(days=1):%Y%m%d}"]
         price = f" · ${s['hours'] * s['rate']:,.0f}" if s["rate"] else ""
-        desc = f"{s['service']} · {s['hours']:g}h{price}" + (f"\\nPhone: {s['phone']}" if s["phone"] else "") + \
-               (f"\\n{s['notes']}" if s["notes"] else "")
+        desc = _esc(f"{s['service']} · {s['hours']:g}h{price}" + (f"\nPhone: {s['phone']}" if s["phone"] else "")
+                    + (f"\n{s['notes']}" if s["notes"] else ""))  # notes with "," / ";" / newlines broke the feed
         title = f"Studio: {who} ({s['service']})"
         lines += ["BEGIN:VEVENT", f"UID:session-{s['id']}@amo", f"DTSTAMP:{stamp}", *when,
                   f"SUMMARY:{_esc(title)}", f"DESCRIPTION:{desc}", "END:VEVENT"]

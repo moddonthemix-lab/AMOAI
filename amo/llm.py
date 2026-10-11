@@ -98,12 +98,19 @@ class Ollama:
                     r.read()
                     if "does not support tools" in r.text:
                         raise LLMError(f"The model '{payload['model']}' can't use tools. Try: amo use llama3.2:3b")
-                r.raise_for_status()
+                if r.status_code >= 400:
+                    r.read()
+                    raise LLMError(f"The AI model failed ({r.status_code}): {r.text[:200]}")
                 for line in r.iter_lines():
                     if not line:
                         continue
-                    chunk = json.loads(line)
-                    msg = chunk.get("message", {})
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if chunk.get("error"):  # e.g. out of memory halfway through an answer
+                        raise LLMError(f"The AI model stopped: {chunk['error']}")
+                    msg = chunk.get("message") or {}
                     if msg.get("tool_calls"):
                         yield {"tool_calls": msg["tool_calls"]}
                     if msg.get("content"):

@@ -77,6 +77,10 @@ def to_speech(text: str) -> str:
     t = re.sub(r"`([^`]*)`", r"\1", t)
     t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)
     t = re.sub(r"https?://\S+", "a link", t)
+    t = re.sub(r"#(\d+)", r"number \1", t)  # before "#" is dropped as markdown
+    # phone numbers digit by digit, before "555-0101" can become a range ("555 to 0101")
+    t = re.sub(r"(?<![\d.$])(?:\+?1[ .-]?)?(?:\(\d{3}\)\s?|\d{3}[ .-])?\d{3}[ .-]\d{4}(?!\d|\.\d)",
+               lambda m: ", ".join(" ".join(g) for g in re.findall(r"\d+", m.group(0))), t)
     t = re.sub(r"[*_#>|~]", "", t)
     t = re.sub(r"^\s*[-•]\s+", "", t, flags=re.M)
     t = re.sub(r"[\U0001F000-\U0001FFFF☀-➿️]", "", t)
@@ -85,7 +89,8 @@ def to_speech(text: str) -> str:
     t = re.sub(r"\bR:R\b", "risk to reward", t)
     t = re.sub(r"=F\b(?: futures)?", " futures", t)
     t = re.sub(r"-USD\b", "", t)
-    t = re.sub(r"\b[123][UD]?(?:-[123][UD]?)+\b", _strat_combo, t)       # 2U-1-2D
+    t = re.sub(r"\b[123][UD]?(?:-[123][UD]?)+\b(?!\s*(?:hours?|hrs?|days?|weeks?|minutes?|mins?|months?|years?|"
+               r"times|songs|beats|sessions|people|reels|posts|trades|contracts)\b)", _strat_combo, t)  # 2U-1-2D
     t = re.sub(r"\b([23])([UD])\b", lambda m: _STRAT[m.group(0)], t)     # lone 2U / 2D
     t = re.sub(r"\bQ\b(?= [▲▼])|▲|▼", lambda m: {"▲": " up", "▼": " down"}.get(m.group(0), m.group(0)), t)
 
@@ -99,7 +104,6 @@ def to_speech(text: str) -> str:
     t = re.sub(r"(\d) ?/ ?(?:h|hr|hour)\b", r"\1 an hour", t)
     t = re.sub(r"\$(\d[\d,]*)(?:\.(\d{2}))?", _money, t)
     t = re.sub(r"(\d)h\b", r"\1 hours", t)
-    t = re.sub(r"#(\d+)", r"number \1", t)
 
     # symbols and punctuation that read badly
     t = re.sub(r"(\d)\s*[–—-]\s*(\d)", r"\1 to \2", t)                  # ranges 758.79–772.65

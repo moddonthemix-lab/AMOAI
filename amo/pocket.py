@@ -138,6 +138,28 @@ def clip_wav(clip_id: str, db: Database | None = None) -> bytes | None:
 
 
 # ------------------------------------------------------------------ the pet's copy of your day
+def _next_clock_change(real: float, days: int = 60) -> dict[str, int]:
+    """When the clocks next change (daylight saving) and the offset after — so a pet that stays offline
+    across the change still shows the right time. {} if there's none coming (or no timezone data)."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo(settings.timezone)
+    except Exception:  # noqa: BLE001
+        return {}
+
+    def off(t: float) -> int:
+        return int(datetime.fromtimestamp(t, tz).utcoffset().total_seconds())
+
+    lo, hi = real, real + days * 86400
+    if off(lo) == off(hi):
+        return {}
+    while hi - lo > 60:  # find the minute it changes
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if off(mid) == off(lo) else (lo, mid)
+    return {"tz_change": int(hi), "tz_offset_after": off(hi)}
+
+
 def snapshot(db: Database | None = None, now: datetime | None = None) -> dict[str, Any]:
     from . import mood
     from .goals import Goals
@@ -167,6 +189,7 @@ def snapshot(db: Database | None = None, now: datetime | None = None) -> dict[st
         "now": int(real),
         "tz_offset": int(round((now - datetime.fromtimestamp(real, timezone.utc).replace(tzinfo=None))
                                .total_seconds() / 900) * 900),
+        **_next_clock_change(real),
         "assistant": settings.assistant_name,
         "owner": settings.owner_name,
         "mood": mood.current(db).name,
@@ -231,6 +254,10 @@ def process(db: Database | None = None, transcribe=None, describe=None) -> dict[
     notes = photos = 0
     asked: list[str] = []
     for r in rows:
+        # claim it first: two syncs at once (retry + background job) must not save the same note twice
+        if not db.execute("UPDATE pocket_events SET status = 'processing' WHERE id = ? AND status = 'received'",
+                          (r["id"],)):
+            continue
         try:
             when = datetime.fromisoformat(r["at"])
             stamp = f"{when:%b} {when.day}, {when.hour % 12 or 12}:{when.minute:02d} {'AM' if when.hour < 12 else 'PM'}"

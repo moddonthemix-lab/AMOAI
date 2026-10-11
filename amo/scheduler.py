@@ -70,7 +70,7 @@ def tick(db: Database, now: datetime | None = None) -> list[str]:
             ran.append("brief_prepared")
         except Exception:  # noqa: BLE001 — the brief must never stop the scheduler
             log.exception("preparing the brief failed")
-    if now.hour >= BRIEF_HOUR and db.get_kv("last_brief") != today:
+    if BRIEF_HOUR <= now.hour < 18 and db.get_kv("last_brief") != today:  # late is fine, not at 11pm
         notify("Morning brief", morning_brief_text(db), db=db)
         db.set_kv("last_brief", today)
         ran.append("brief")

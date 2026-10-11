@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -117,6 +118,10 @@ def describe(image: bytes, question: str = "", model: str | None = None) -> str:
     return (out.get("content") or "").strip()
 
 
+_cascade = None
+_cascade_lock = threading.Lock()
+
+
 def faces_in(image: bytes) -> int | None:
     """How many faces are in the picture (OpenCV, instant). None if OpenCV isn't installed."""
     cv2 = _opencv()
@@ -127,8 +132,11 @@ def faces_in(image: bytes) -> int | None:
     img = cv2.imdecode(np.frombuffer(image, np.uint8), cv2.IMREAD_GRAYSCALE)
     if img is None:
         return 0
-    cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-    return len(cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=6, minSize=(60, 60)))
+    global _cascade
+    if _cascade is None:  # loading the face model takes longer than using it — once is enough
+        _cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    with _cascade_lock:  # one OpenCV classifier isn't safe to share between threads at the same moment
+        return len(_cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=6, minSize=(60, 60)))
 
 
 def look(question: str = "", camera: str | None = None) -> dict[str, Any]:

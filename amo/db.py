@@ -471,11 +471,30 @@ def parse_when(value: str | None) -> str:
         return (today() - timedelta(days=1)).isoformat()
     try:
         dt = datetime.fromisoformat(v)
-        if dt.tzinfo is not None:
-            dt = dt.replace(tzinfo=None)
+        if dt.tzinfo is not None:  # "…T19:00Z" / "+02:00" → your local time, not the same digits
+            try:
+                from zoneinfo import ZoneInfo
+
+                dt = dt.astimezone(ZoneInfo(settings.timezone)).replace(tzinfo=None)
+            except Exception:  # noqa: BLE001 — unknown tz: the computer's own
+                dt = dt.astimezone().replace(tzinfo=None)
         return dt.isoformat() if "T" in v else dt.date().isoformat()
     except ValueError:
         raise ValueError(f"could not parse date/time {value!r}; use YYYY-MM-DD or YYYY-MM-DD HH:MM")
+
+
+def _statements(script: str) -> list[str]:
+    """Split a migration into statements (triggers contain ';' inside BEGIN … END)."""
+    out, buf = [], ""
+    for piece in script.split(";"):
+        buf += piece + ";"
+        if sqlite3.complete_statement(buf):
+            if buf.strip(" \n\t;"):
+                out.append(buf.strip())
+            buf = ""
+    if buf.strip(" \n\t;"):
+        out.append(buf.strip())
+    return out
 
 
 class Database:
@@ -523,19 +542,35 @@ class Database:
                 raise
 
     def migrate(self) -> None:
-        with self.tx() as c:
+        """Each migration runs whole or not at all, and only one process (server, listener, CLI)
+        runs it — the others wait for the lock and then see it's done."""
+        with self._lock:
+            c = self.conn
             c.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
-            row = c.execute("SELECT MAX(version) AS v FROM schema_version").fetchone()
-            current = row["v"] or 0
-            for i, sql in enumerate(MIGRATIONS[current:], start=current + 1):
-                c.executescript(sql)
-                c.execute("INSERT INTO schema_version(version) VALUES (?)", (i,))
+            c.commit()
+            while True:
+                c.execute("BEGIN IMMEDIATE")
+                try:
+                    current = c.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] or 0
+                    if current >= len(MIGRATIONS):
+                        c.commit()
+                        return
+                    for stmt in _statements(MIGRATIONS[current]):
+                        c.execute(stmt)
+                    c.execute("INSERT INTO schema_version(version) VALUES (?)", (current + 1,))
+                    c.commit()
+                except Exception:
+                    c.rollback()
+                    raise
 
     # --- helpers -----------------------------------------------------------
     def execute(self, sql: str, params: tuple | dict = ()) -> int:
+        """The new row's id for an INSERT, otherwise how many rows changed."""
         with self.tx() as c:
             cur = c.execute(sql, params)
-            return cur.lastrowid if cur.lastrowid else cur.rowcount
+            if sql.lstrip()[:7].upper() in ("INSERT ", "REPLACE") and cur.lastrowid:
+                return cur.lastrowid
+            return cur.rowcount
 
     def all(self, sql: str, params: tuple | dict = ()) -> list[dict[str, Any]]:
         with self._lock:

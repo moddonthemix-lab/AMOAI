@@ -15,4 +15,4 @@ ENV AMO_DB_PATH=/data/amo.db \
 VOLUME ["/data", "/models"]
 EXPOSE 8765
 HEALTHCHECK CMD curl -fs http://localhost:8765/api/health || exit 1
-CMD ["sh", "-c", "[ -f \"$AMO_PIPER_VOICE\" ] || amo setup-voice; amo serve --port 8765"]
+CMD ["sh", "-c", "[ -f \"$AMO_PIPER_VOICE\" ] || amo setup-voice; amo serve --host 0.0.0.0 --port 8765"]

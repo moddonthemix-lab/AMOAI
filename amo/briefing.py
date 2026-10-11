@@ -361,7 +361,8 @@ def due_to_prepare(db: Database, now: datetime, brief_hour: int) -> bool:
     if b["date"] != now.date().isoformat():
         return True
     retry_at = datetime.fromisoformat(b["prepared_at"]) + timedelta(minutes=15)
-    return not b.get("weather") and bool(settings.location or db.get_kv("brief_location")) and now >= retry_at
+    place = (settings.location or db.get_kv("brief_location") or "").strip().lower()
+    return not b.get("weather") and place not in ("", "none", "off", "no") and now >= retry_at
 
 
 # ------------------------------------------------------------------ severe weather, all day

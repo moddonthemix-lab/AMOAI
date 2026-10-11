@@ -24,13 +24,18 @@ def notify(title: str, body: str = "", level: str = "info", push: bool = True,
                                       "created_at": now_iso()})
     if push and settings.ntfy_url:
         try:
+            from email.header import Header
+
+            # HTTP headers are ASCII: "Jay’s session — paid" would crash, so encode it (ntfy understands RFC 2047)
+            short = title.replace("\n", " ")[:120]
+            safe_title = short if short.isascii() else Header(short, "utf-8").encode().replace("\n", "")
             httpx.post(
                 f"{settings.ntfy_url.rstrip('/')}/{settings.ntfy_topic}",
                 content=body.encode() or title.encode(),
-                headers={"Title": title, "Priority": _PRIORITY[level], "Tags": "robot"},
+                headers={"Title": safe_title, "Priority": _PRIORITY[level], "Tags": "robot"},
                 timeout=10,
             )
-        except httpx.HTTPError as e:  # never let a push failure break the caller
+        except Exception as e:  # noqa: BLE001 — never let a push failure break the caller
             log.warning("ntfy push failed: %s", e)
     return db.one("SELECT * FROM notifications WHERE id = ?", (nid,))
 

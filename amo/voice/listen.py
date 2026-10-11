@@ -348,12 +348,25 @@ class Listener:
         idle = self.wake_stream or self.segments  # what to listen with while waiting for "Hey AMO"
         if self.announcements is None:
             for seg in idle(None):
-                self.step(seg)
+                self.safe_step(seg)
             return
         while True:  # listen in short windows so AMO can speak up between them
             for seg in idle(self.poll_seconds):
-                self.step(seg)
+                self.safe_step(seg)
             self.speak_announcements()
+
+    def safe_step(self, seg: Any) -> None:
+        """One request; a lost connection to the brain (Wi-Fi drop, Mac asleep) never ends listening."""
+        try:
+            self.step(seg)
+        except Exception as e:  # noqa: BLE001
+            self.log(f"   (that didn't work: {e}) Still listening.")
+            self.on_state("idle")
+            try:
+                self.say("Sorry, I couldn't reach my brain just now." if "connect" in str(e).lower()
+                         or "timed out" in str(e).lower() else "Sorry, something went wrong.")
+            except Exception:  # noqa: BLE001 — the speaker may be what failed
+                pass
 
 
 # ------------------------------------------------------------------ real audio

@@ -42,6 +42,13 @@ def spoken_reply(history: list[dict[str, Any]], text: str, channel: str = "voice
         except LLMError as e:
             pieces.put(f"Sorry, I couldn't do that: {e}")
             pieces.put(("done", ""))
+        except Exception:  # noqa: BLE001 — a bug must never leave the speaker waiting forever
+            import logging
+
+            logging.getLogger(__name__).exception("voice reply failed")
+            turn.info["ok"] = False
+            pieces.put("Sorry, something went wrong on my end.")
+            pieces.put(("done", ""))
 
     threading.Thread(target=think, daemon=True).start()
     phrase = acks.pick(text)

@@ -45,7 +45,12 @@ from .config import settings
 def cmd_serve(a):
     import uvicorn
 
-    uvicorn.run("amo.api.main:app", host=a.host, port=a.port, log_level="info")
+    host = a.host
+    if host is None:  # open to your network only when it's protected by a key
+        host = "0.0.0.0" if settings.api_key else "127.0.0.1"
+        if not settings.api_key:
+            print("Serving on this computer only (no AMO_API_KEY set). To let devices on your Wi-Fi in: amo lan on")
+    uvicorn.run("amo.api.main:app", host=host, port=a.port, log_level="info")
 
 
 def cmd_doctor(_a):
@@ -737,7 +742,7 @@ def main(argv: list[str] | None = None) -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("serve", help="run the API, dashboard and scheduler")
-    s.add_argument("--host", default="0.0.0.0")
+    s.add_argument("--host", default=None, help="default: 127.0.0.1, or 0.0.0.0 when AMO_API_KEY is set")
     s.add_argument("--port", type=int, default=8765)
     s.set_defaults(fn=cmd_serve)
 
