@@ -227,7 +227,10 @@ def run_case(case: Case, live: Database, model: str | None = None) -> dict[str, 
         total = int((time.monotonic() - started) * 1000)
         path = turn.info.get("path", "")
         why = [f"crashed: {error}"] if error else check(case, out, path, db)
+        from .brain import kind
+
         return {"say": case.say, "source": case.source, "tags": case.tags, "ok": not why, "why": why,
+                "kind": kind(case.say, case.before[-1] if case.before else ""),
                 "reply": (out.get("content") or "")[:300], "tools": [t["name"] for t in out.get("tool_calls", [])],
                 "path": path, "first_ms": turn.marks.get("first_text", total), "total_ms": total,
                 "model_calls": turn.info.get("model_calls", 0)}
@@ -266,6 +269,7 @@ def summarize(results: list[dict[str, Any]], model: str) -> dict[str, Any]:
         "first_median_ms": med([r["first_ms"] for r in results]),
         "ai_first_median_ms": med([r["first_ms"] for r in ai]),
         "total_median_ms": med([r["total_ms"] for r in results]),
+        "ai_total_median_ms": med([r["total_ms"] for r in ai]),
         "failures": [r for r in results if not r["ok"]],
         "results": results,
     }
@@ -291,17 +295,36 @@ def text(summary: dict[str, Any], show: int = 15) -> str:
 
 
 def compare(summaries: list[dict[str, Any]]) -> str:
+    from .brain import KINDS, broken, recommend
+
     sec = lambda ms: "—" if ms is None else f"{ms / 1000:.1f}s"  # noqa: E731
-    rows = sorted(summaries, key=lambda s: (-s["score"], s["ai_first_median_ms"] or 10**9))
-    lines = ["model                      score   AI cases  first word (AI)  total"]
+    bad = {s["model"]: broken(s) for s in summaries if broken(s)}
+    rows = sorted((s for s in summaries if s["model"] not in bad),
+                  key=lambda s: (-s["score"], s["ai_first_median_ms"] or 10**9))
+    lines = ["model                      score   AI cases  AI reply time"]
     for s in rows:
         lines.append(f"{s['model']:<26} {s['score']:>5}%   {str(s['ai_score'] or '—'):>6}%  "
-                     f"{sec(s['ai_first_median_ms']):>14}  {sec(s['total_median_ms']):>6}")
+                     f"{sec(s.get('ai_total_median_ms', s['ai_first_median_ms'])):>13}")
+    for m, err in bad.items():
+        lines.append(f"{m:<26} didn't run — {err[:110]}")
+    if not rows:
+        return "\n".join(lines + ["", "None of the models ran. Check they're downloaded: ollama list"])
+
+    rec = recommend(summaries)
+    lines += ["", "By kind of request (accuracy · reply time · cases):"]
+    for k in KINDS:
+        cells = "   ".join(f"{r['model']} {r['acc']:.0f}% {sec(r['ms'])}" for r in rec["table"].get(k, []))
+        lines.append(f"  {k:<7} {cells or '—'}")
     best = rows[0]
     fastest_good = min((s for s in rows if s["score"] >= best["score"] - 3),
                        key=lambda s: s["ai_first_median_ms"] or 10**9)
     pick = fastest_good if fastest_good is not best else best
-    lines.append(f"\nPick: {pick['model']} — "
+    lines.append(f"\nOne model: {pick['model']} — "
                  + ("best score" if pick is best else "within 3 points of the best and faster") +
                  f".  Switch with:  amo use {pick['model']}")
+    split = rec["split"]
+    if len(set(split.values())) > 1:
+        lines.append("Two-tier (each kind to the fastest model that's as good there): "
+                     + ", ".join(f"{k} → {split[k]}" for k in KINDS if k in split)
+                     + ".  Switch with:  amo brain --auto")
     return "\n".join(lines)

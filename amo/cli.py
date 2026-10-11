@@ -478,7 +478,67 @@ def cmd_use(a):
     key = "AMO_FAST_MODEL" if a.fast else "AMO_CHAT_MODEL"
     path = _set_env(key, a.model)
     print(f"{key}={a.model}  (saved in {path})")
+    if not a.fast and any((settings.model_chat, settings.model_lookup, settings.model_action)):
+        for k in ("AMO_MODEL_CHAT", "AMO_MODEL_LOOKUP", "AMO_MODEL_ACTION"):
+            _set_env(k, "")
+        print("(two-tier brain switched off — one model for everything now; see: amo brain)")
     _restart_server()
+
+
+def cmd_brain(a):
+    """Show or set which model answers chat / lookups / actions."""
+    import json
+
+    from . import brain, evals
+
+    keys = {"chat": "AMO_MODEL_CHAT", "lookup": "AMO_MODEL_LOOKUP", "action": "AMO_MODEL_ACTION"}
+    want: dict[str, str] = {}
+    if a.off:
+        want = {k: "" for k in keys}
+    elif a.auto:
+        files = sorted(evals.RESULTS.glob("results-*.json"), key=lambda f: f.stat().st_mtime)
+        if not files:
+            print("No eval results yet. Run first:  amo eval --models llama3.2:3b,gemma4:e2b")
+            return
+        newest = files[-1].stat().st_mtime
+        latest: dict[str, dict] = {}
+        for f in files:  # the latest run of each model from the same session (within 12 hours)
+            if newest - f.stat().st_mtime < 12 * 3600:
+                s = json.loads(f.read_text())
+                if "kind" in (s.get("results") or [{}])[0]:
+                    latest[s["model"]] = s
+        rec = brain.recommend(list(latest.values()))
+        if not rec["split"]:
+            print("These results are from before the two-tier brain — run amo eval --models … again.")
+            return
+        want = dict(rec["split"])
+    else:
+        want = {k: v for k, v in (("chat", a.chat), ("lookup", a.lookup), ("action", a.action)) if v}
+    if want:
+        installed = _installed_models()
+        for k, m in want.items():
+            if m and installed is not None and not any(i == m or i == f"{m}:latest" for i in installed):
+                print(f"{m} isn't downloaded — run:  ollama pull {m}")
+                return
+            _set_env(keys[k], m)
+            setattr(settings, f"model_{k}", m)
+        _restart_server()
+    print("AMO's brain:" + ("  (one model)" if not brain.two_tier() else ""))
+    examples = {"chat": "“hey”, “I'm tired today”", "lookup": "“what's my schedule tomorrow”, “who owes me”",
+                "action": "“book Ty tomorrow at 2”, “Jay paid 150”"}
+    for k in brain.KINDS:
+        print(f"  {k:<7} → {brain.model_for(k):<20} {examples[k]}")
+    if not want:
+        print("\nSet it from your eval results:  amo brain --auto   (or --chat / --lookup / --action MODEL, --off)")
+
+
+def _installed_models() -> list[str] | None:
+    from .llm import get_llm
+
+    try:
+        return get_llm().list_models() or None
+    except Exception:  # noqa: BLE001 — Ollama not running: don't block, it's checked when used
+        return None
 
 
 def cmd_bench(a):
@@ -815,6 +875,14 @@ def main(argv: list[str] | None = None) -> None:
     u.add_argument("--fast", action="store_true", help="set the background (learning) model instead")
     u.add_argument("--skip-pull", action="store_true", help="don't download, just switch")
     u.set_defaults(fn=cmd_use)
+
+    br = sub.add_parser("brain", help="two-tier brain: which model answers chat, lookups and actions")
+    br.add_argument("--auto", action="store_true", help="pick from your last `amo eval --models …` run")
+    br.add_argument("--chat", help="model for small talk and general questions")
+    br.add_argument("--lookup", help="model for questions about your data")
+    br.add_argument("--action", help="model for saving and changing things")
+    br.add_argument("--off", action="store_true", help="one model for everything (AMO_CHAT_MODEL)")
+    br.set_defaults(fn=cmd_brain)
 
     b = sub.add_parser("bench", help="time models on this computer")
     b.add_argument("models", nargs="*")

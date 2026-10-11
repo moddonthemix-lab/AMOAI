@@ -57,11 +57,27 @@ def test_add_your_own_case(tmp_path, monkeypatch):
     assert evals.custom_cases()[0].source == "custom"
 
 
-def test_compare_picks_the_best_model():
-    a = {"model": "big", "score": 90.0, "ai_score": 85.0, "ai_first_median_ms": 9000, "total_median_ms": 12000}
-    b = {"model": "small", "score": 88.0, "ai_score": 80.0, "ai_first_median_ms": 3000, "total_median_ms": 5000}
-    out = evals.compare([a, b])
-    assert "Pick: small" in out and "amo use small" in out
+def _res(kind, ok, ms, crashed=False):
+    return {"kind": kind, "ok": ok, "first_ms": ms, "total_ms": ms, "path": "model", "tags": ["ai"],
+            "why": ["crashed: LLMError: The AI model 'q' isn't downloaded yet."] if crashed else ([] if ok else ["x"])}
+
+
+def test_compare_picks_the_best_model_and_a_two_tier_split():
+    # big: right on everything, slow.  small: as good at chat and lookups, worse at saving things, fast.
+    big = [_res("chat", True, 20000)] * 4 + [_res("lookup", True, 22000)] * 4 + [_res("action", True, 25000)] * 4
+    small = ([_res("chat", True, 6000)] * 4 + [_res("lookup", True, 7000)] * 4
+             + [_res("action", True, 8000)] * 2 + [_res("action", False, 8000)] * 2)
+    broken = [_res("chat", False, 100, crashed=True)] * 12
+    a = {"model": "big", "score": 90.0, "ai_score": 100.0, "ai_first_median_ms": 22000, "total_median_ms": 9000,
+         "ai_total_median_ms": 22000, "results": big}
+    b = {"model": "small", "score": 88.0, "ai_score": 83.0, "ai_first_median_ms": 7000, "total_median_ms": 3000,
+         "ai_total_median_ms": 7000, "results": small}
+    c = {"model": "q", "score": 50.0, "ai_score": 0.0, "ai_first_median_ms": 100, "total_median_ms": 100,
+         "ai_total_median_ms": 100, "results": broken}
+    out = evals.compare([a, b, c])
+    assert "One model: small" in out and "amo use small" in out
+    assert "q " in out and "didn't run — LLMError: The AI model 'q' isn't downloaded yet." in out
+    assert "chat → small, lookup → small, action → big" in out and "amo brain --auto" in out
 
 
 def test_mistake_log(db, llm):

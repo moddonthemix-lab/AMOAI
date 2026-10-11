@@ -13,7 +13,10 @@ Things only you can do (AMO / Claude can't do them for you). Tick them off as yo
       Calendar → copy the webcal:// link; Google: Settings → calendar → "Secret address in iCal format")
 
 ## Tuning — send the output back so AMO can be tuned on real numbers
-- [ ] Compare AI models on the test set: `.venv/bin/amo eval --models gemma4:e2b,qwen3:4b,llama3.2:3b`
+- [x] Compare AI models on the test set (llama3.2:3b most accurate but ~25s; gemma4:e2b ~9s)
+- [ ] Re-run with the per-kind breakdown, then switch on the two-tier brain:
+      `.venv/bin/amo eval --models llama3.2:3b,gemma4:e2b` → `.venv/bin/amo brain --auto`
+- [ ] qwen3:4b didn't run in the eval — check `ollama list`; if it's there, the re-run shows the error
 - [ ] After a day or two of normal use: `.venv/bin/amo stats` (speed report) and `.venv/bin/amo mistakes`
 - [ ] Try the checklist: "what's 15% of 240", "set a timer for 1 minute" (with Face ↗ open),
       "note: test idea", "from now on keep it short", "what do my docs say about …", "what's your input on

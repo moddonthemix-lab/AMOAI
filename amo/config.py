@@ -67,6 +67,10 @@ class Settings:
     persona_file: str = field(default_factory=lambda: _env("AMO_PERSONA_FILE", ""))  # default data/persona.md
     knowledge_dir: str = field(default_factory=lambda: _env("AMO_KNOWLEDGE_DIR", "~/Documents/AMO Knowledge"))
     coder_model: str = field(default_factory=lambda: _env("AMO_CODER_MODEL", "qwen2.5-coder:3b"))
+    # Two-tier brain (amo brain): which model answers each kind of request. Blank = chat_model.
+    model_chat: str = field(default_factory=lambda: _env("AMO_MODEL_CHAT", ""))      # small talk, questions
+    model_lookup: str = field(default_factory=lambda: _env("AMO_MODEL_LOOKUP", ""))  # "what's my schedule"
+    model_action: str = field(default_factory=lambda: _env("AMO_MODEL_ACTION", ""))  # saves and changes
     code_dirs: str = field(default_factory=lambda: _env(
         "AMO_CODE_DIRS", "~/Projects,~/Developer,~/code,~/Desktop,~/Documents/code"))
     self_repair: bool = field(default_factory=lambda: _env("AMO_SELF_REPAIR", "1") in ("1", "true", "yes"))

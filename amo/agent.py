@@ -198,7 +198,7 @@ class Agent:
         except Exception:
             turn.info["ok"] = False
             if own:
-                turn.save(self.db, model=model or settings.chat_model)
+                turn.save(self.db, model=model or turn.info.get("model") or settings.chat_model)
             raise
         finally:
             self._turn = outer
@@ -214,7 +214,7 @@ class Agent:
 
             log_correction("failed", turn.request, "", self.db, reply=out["content"])
         if own:
-            turn.save(self.db, model=model or settings.chat_model)
+            turn.save(self.db, model=model or turn.info.get("model") or settings.chat_model)
         return out
 
     def _chat(
@@ -291,6 +291,13 @@ class Agent:
             history = [*history[:last_user], {"role": "user", "content": meant}, *history[last_user + 1:]]
             if on_text and undone:
                 on_text(undone + " ")
+
+        if model is None:  # two-tier brain: the model that's best at this kind of request
+            from . import brain
+
+            kind, model = brain.pick(history)
+            if self._turn is not None:
+                self._turn.info["kind"] = kind
 
         def build() -> list[dict[str, Any]]:
             """The prompt — only built when the AI is actually needed (memory search, documents, mood)."""

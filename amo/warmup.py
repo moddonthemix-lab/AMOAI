@@ -51,7 +51,10 @@ def warm_llm(channel: str = "voice") -> float | None:
         agent = Agent()
         convo = [{"role": "system", "content": agent.build_system_prompt("", channel)},
                  {"role": "user", "content": agent.turn_note("") + "hi"}]
-        get_llm().chat(convo, tools=tools.schemas(tools.route("")), options={"num_predict": 1})
+        from .brain import models_in_use
+
+        for model in models_in_use():  # two-tier brain: both models ready, prompt cached in each
+            get_llm().chat(convo, model=model, tools=tools.schemas(tools.route("")), options={"num_predict": 1})
         took = time.monotonic() - start
         log.info("chat model warm (%.1fs)", took)
         return took
@@ -109,7 +112,9 @@ def keep_warm(every: float = 300) -> bool:
         return False
     _last_check = time.monotonic()
     loaded = loaded_models()
-    if loaded is None or any(_same(m, settings.chat_model) for m in loaded):
+    from .brain import models_in_use
+
+    if loaded is None or all(any(_same(m, want) for m in loaded) for want in models_in_use()):
         return False
     threading.Thread(target=warm_llm, daemon=True).start()
     return True
