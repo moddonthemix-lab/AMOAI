@@ -15,7 +15,6 @@ from datetime import datetime, timedelta
 from .config import settings
 from .crm import StudioCRM
 from .db import Database, get_db, local_now
-from .finance import dashboard
 from .learning import learn_from_conversations, weekly_reflection
 from .llm import LLMError
 from .notify import notify
@@ -49,29 +48,10 @@ def session_reminders(db: Database, now: datetime | None = None) -> int:
 
 
 def morning_brief_text(db: Database) -> str:
-    d = dashboard(db)
-    lines = [f"{d['weekday']} {d['date']}"]
-    if d["studio"]["today"]:
-        lines.append("Studio: " + ", ".join(f"{s['time']} {s['client']}" for s in d["studio"]["today"]))
-    else:
-        lines.append("Studio: no sessions booked today")
-    if d["studio"]["unpaid"]:
-        lines.append(f"{d['studio']['unpaid']} session(s) still unpaid")
-    todo = [g["title"] for g in d["goals"] if not g["done"]]
-    if todo:
-        lines.append("Goals: " + "; ".join(todo))
-    rev = d["revenue"]
-    month = f"Month so far: ${rev['month']:,.0f}"
-    if rev.get("month_target"):
-        month += f" of ${rev['month_target']:,.0f} ({rev['month_pct'] * 100:.0f}%)"
-    lines.append(month)
-    if d["trading"]["open_positions"]:
-        lines.append(f"{d['trading']['open_positions']} open trade(s)")
-    if d["reselling"]["stale"]:
-        lines.append(f"{d['reselling']['stale']} resale item(s) sitting 30+ days — consider a price drop")
-    if d["cravvr"]["open_tasks"]:
-        lines.append(f"Cravvr: {d['cravvr']['open_tasks']} open task(s)")
-    return "\n".join(lines)
+    """Today's brief (see briefing.py) — prepared ahead with weather, calendar, studio, goals, money."""
+    from .briefing import today
+
+    return today(db)["text"]
 
 
 def tick(db: Database, now: datetime | None = None) -> list[str]:
@@ -82,6 +62,14 @@ def tick(db: Database, now: datetime | None = None) -> list[str]:
         ran.append("reminders")
 
     today = now.date().isoformat()
+    from . import briefing
+
+    if briefing.due_to_prepare(db, now, BRIEF_HOUR):  # ready (with audio) before you wake up
+        try:
+            briefing.prepare(db, now)
+            ran.append("brief_prepared")
+        except Exception:  # noqa: BLE001 — the brief must never stop the scheduler
+            log.exception("preparing the brief failed")
     if now.hour >= BRIEF_HOUR and db.get_kv("last_brief") != today:
         notify("Morning brief", morning_brief_text(db), db=db)
         db.set_kv("last_brief", today)

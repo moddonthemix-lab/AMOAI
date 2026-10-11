@@ -43,6 +43,11 @@ class Settings:
     owner_name: str = field(default_factory=lambda: _env("AMO_OWNER_NAME", "Modd"))
     assistant_name: str = field(default_factory=lambda: _env("AMO_ASSISTANT_NAME", "AMO"))
     timezone: str = field(default_factory=lambda: _env("AMO_TIMEZONE", "America/New_York"))
+    # Morning brief: your city ("Atlanta, GA" or "33.75,-84.39"; blank = guessed once from your
+    # internet connection), °F or °C, and your calendars' private iCal links (comma-separated).
+    location: str = field(default_factory=lambda: _env("AMO_LOCATION", ""))
+    temp_unit: str = field(default_factory=lambda: _env("AMO_TEMP_UNIT", "F"))
+    calendar_urls: str = field(default_factory=lambda: _env("AMO_CALENDAR_URLS", ""))
     api_key: str = field(default_factory=lambda: _env("AMO_API_KEY", "").strip())
     # Requests from this same computer (127.0.0.1) don't need the API key.
     trust_localhost: bool = field(

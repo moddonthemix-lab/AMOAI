@@ -197,7 +197,29 @@ hours (`AMO_QUIET_HOURS=22-8`):
   clients who've gone quiet on Monday mornings.
 - **Daily rhythm** — the morning brief out loud, an evening check-in on your goals
   (`AMO_CHECKIN_HOUR=21`).
+- **Severe weather** — National Weather Service warnings for your area are said once (a tornado
+  warning even during quiet hours).
 Everything also lands in the dashboard's notifications. Turn it all off with `AMO_PROACTIVE=0`.
+
+### The morning brief
+
+Say "good morning" (or wait for 8am) and AMO plays a brief it already prepared at about 7:15, so it
+starts instantly:
+
+> Good morning, Modd. It's Monday, October 12. Heads up: a Wind Advisory until 6 PM. Right now it's
+> clear, 58 degrees. Today: partly cloudy, a high of 74 and a low of 55. 60% chance of rain — grab an
+> umbrella. On your calendar: Mom's birthday (all day) and Gym with Ty at 10 AM. In the studio: Lil Jay
+> at 7 PM (3 hours). Reminders: call the label at 2 PM. Daily goals: Make one beat. Let's work.
+
+It's written from fixed templates (the AI never makes anything up here). Set up, in `.env`:
+- `AMO_LOCATION="Atlanta, GA"` — your city for weather and alerts (blank = guessed from your internet
+  connection once). `AMO_TEMP_UNIT=C` for Celsius.
+- `AMO_CALENDAR_URLS=` — your calendars' private links, comma-separated (repeating events work):
+  - **Apple Calendar / iCloud**: in the Calendar app, right-click a calendar → *Share Calendar…* → tick
+    *Public Calendar* → copy the `webcal://` link. (Anyone with the link can see that calendar, so keep it
+    private.)
+  - **Google Calendar**: Settings → your calendar → *Integrate calendar* → *Secret address in iCal format*.
+- `amo brief` prints today's brief (and tells you if the weather location is missing).
 
 ### AMO's body (Raspberry Pi or any computer on your Wi-Fi)
 

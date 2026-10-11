@@ -280,12 +280,43 @@ def apply_effects(wav_bytes: bytes, pitch: float = 0.0, robot: float = 0.0) -> b
     return out.getvalue()
 
 
+CACHE_MIN_CHARS = 160  # long texts (the morning brief) are kept on disk for a few days
+
+
+def _cache_path(text: str, style: VoiceStyle) -> Path:
+    import hashlib
+
+    key = hashlib.sha1(f"{style}|{settings.voice_sentence_pause}|{settings.voice_loudness}|{text}".encode()).hexdigest()
+    return Path(settings.db_path).parent / "speech-cache" / f"{key[:20]}.wav"
+
+
 def synthesize(text: str, voice: str | None = None) -> bytes:
     """Return WAV bytes for `text` in the configured (or given) voice."""
     text = clean_for_speech(text)
     if not text:
         text = "Done."
     style = resolve_style(voice)
+    cache = _cache_path(text, style) if len(text) >= CACHE_MIN_CHARS and piper_installed() else None
+    if cache is not None and cache.is_file():
+        return cache.read_bytes()  # rendered ahead of time (e.g. the morning brief)
+    wav = _synthesize(text, style)
+    if cache is not None:
+        try:
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            tmp = cache.with_suffix(".tmp")
+            tmp.write_bytes(wav)
+            tmp.replace(cache)
+            import time
+
+            for old in cache.parent.glob("*.wav"):  # keep three days
+                if old.stat().st_mtime < time.time() - 3 * 86400:
+                    old.unlink(missing_ok=True)
+        except OSError:
+            pass
+    return wav
+
+
+def _synthesize(text: str, style: VoiceStyle) -> bytes:
     # Pitch is shifted by resampling, which also speeds speech up — so ask the engine to
     # speak proportionally slower and the result keeps the intended speed.
     speed = style.rate / (2 ** (style.pitch / 12))

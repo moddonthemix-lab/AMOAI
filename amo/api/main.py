@@ -514,10 +514,13 @@ def get_dashboard():
 
 
 @app.get("/api/brief", dependencies=[Depends(auth)])
-def brief():
-    from ..scheduler import morning_brief_text
+def brief(refresh: bool = False):
+    """Today's morning brief (prepared ahead; ?refresh=1 rebuilds it now)."""
+    from .. import briefing
 
-    return {"text": morning_brief_text(get_db())}
+    b = briefing.prepare(get_db()) if refresh else briefing.today(get_db())
+    return {"text": b["text"], "parts": b["parts"], "prepared_at": b["prepared_at"],
+            "location": b.get("location", "")}
 
 
 @app.get("/api/revenue", dependencies=[Depends(auth)])

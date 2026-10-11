@@ -199,11 +199,11 @@ class Listener:
             if self.brief is not None:
                 text = self.brief()
             else:
+                from ..briefing import today
                 from ..db import get_db
-                from ..scheduler import morning_brief_text
 
-                text = morning_brief_text(get_db())
-            self.say(brief_for_speech(text))
+                text = today(get_db())["text"]
+            self.say(text)  # already written to be spoken (and usually already rendered)
             return True
 
         self.history.append({"role": "user", "content": command})

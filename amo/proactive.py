@@ -38,9 +38,10 @@ def announce(text: str, kind: str = "info", key: str | None = None, ttl_minutes:
     if push:
         from .notify import notify
 
-        title = {"alert": "Strat alert", "reminder": "Reminder", "timer": "⏰ AMO", "brief": "Morning brief",
+        title = {"alert": "Alert", "urgent": "⚠️ Urgent", "reminder": "Reminder", "timer": "⏰ AMO",
+                 "brief": "Morning brief",
                  "checkin": "Check-in"}.get(kind, "AMO")
-        notify(title, text, "warn" if kind == "alert" else "info", db=db)
+        notify(title, text, "warn" if kind in ("alert", "urgent") else "info", db=db)
     return True
 
 
@@ -59,7 +60,7 @@ def take_pending(db: Database | None = None, now: datetime | None = None) -> lis
     db = db or get_db()
     now = now or local_now()
     # In quiet hours only timers/alarms you set yourself are spoken; everything else waits.
-    only_timers = " AND kind = 'timer'" if quiet_now(now) else ""
+    only_timers = " AND kind IN ('timer', 'urgent')" if quiet_now(now) else ""
     rows = db.all("SELECT id, text, expires_at FROM announcements WHERE spoken_at IS NULL"
                   f"{only_timers} ORDER BY id")
     out = []
@@ -168,14 +169,14 @@ def studio_nudges(db: Database, now: datetime) -> int:
 
 
 def daily_rhythm(db: Database, now: datetime) -> int:
+    from . import briefing
     from .goals import Goals
-    from .scheduler import BRIEF_HOUR, morning_brief_text
-    from .voice.listen import brief_for_speech
+    from .scheduler import BRIEF_HOUR
 
     said = 0
     today = now.date().isoformat()
     if BRIEF_HOUR <= now.hour < 12:
-        said += announce(brief_for_speech(morning_brief_text(db)), "brief", f"brief:{today}",
+        said += announce(briefing.today(db, now)["text"], "brief", f"brief:{today}",
                          ttl_minutes=(12 - now.hour) * 60, db=db, push=False, now=now)
     if now.hour >= settings.checkin_hour:
         goals = Goals(db).today_list()
@@ -195,7 +196,10 @@ def run_jobs(db: Database, now: datetime | None = None) -> list[str]:
     ran = []
     if not settings.proactive:
         return ran
-    for name, job in (("strat_watch", strat_watch), ("studio", studio_nudges), ("rhythm", daily_rhythm)):
+    from .briefing import watch_alerts
+
+    for name, job in (("strat_watch", strat_watch), ("studio", studio_nudges), ("rhythm", daily_rhythm),
+                      ("weather_alerts", watch_alerts)):
         try:
             if job(db, now):
                 ran.append(name)

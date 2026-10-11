@@ -602,10 +602,15 @@ def cmd_import(a):
 
 
 def cmd_brief(_a):
+    from .briefing import prepare
     from .db import get_db
-    from .scheduler import morning_brief_text
 
-    print(morning_brief_text(get_db()))
+    b = prepare(get_db(), render=False)
+    print(b["text"])
+    if not b.get("weather"):
+        print("\n(no weather: set AMO_LOCATION=\"Your City, ST\" in .env)")
+    elif b.get("location"):
+        print(f"\n(weather for {b['location']} — change it with AMO_LOCATION in .env)")
 
 
 def cmd_learn(_a):

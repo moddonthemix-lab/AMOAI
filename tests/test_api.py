@@ -59,7 +59,7 @@ def test_scheduler_brief_and_reminders(db, llm):
     assert "reminders" in ran and "brief" in ran
     assert tick(db, now) == []  # nothing runs twice
     assert db.scalar("SELECT COUNT(*) FROM notifications") == 2
-    assert "Month so far" in morning_brief_text(db)
+    assert morning_brief_text(db).startswith("Good ")
 
 
 def test_api_key_and_localhost_trust(client, monkeypatch):
