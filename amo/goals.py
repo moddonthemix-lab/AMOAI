@@ -59,21 +59,43 @@ class Goals:
             c.execute(
                 "INSERT INTO goal_checkins (goal_id, day, done, value, note) VALUES (?, ?, ?, ?, ?) "
                 "ON CONFLICT(goal_id, day) DO UPDATE SET done = excluded.done, "
-                "value = COALESCE(excluded.value, value), note = COALESCE(excluded.note, note)",
+                "value = CASE WHEN excluded.value IS NULL THEN value ELSE COALESCE(value, 0) + excluded.value END, "
+                "note = COALESCE(excluded.note, note)",
                 (g["id"], d, int(done), value, note),
             )
         return self.get(g["id"])
 
     def streak(self, goal_id: int) -> int:
-        days = {r["day"] for r in self.db.all(
-            "SELECT day FROM goal_checkins WHERE goal_id = ? AND done = 1", (goal_id,))}
-        d = today()
-        if d.isoformat() not in days:  # today not done yet doesn't break the streak
-            d -= timedelta(days=1)
+        """Consecutive periods done: days for daily goals, weeks for weekly, months for monthly.
+        The current period not done yet doesn't break the streak."""
+        cad = self.db.scalar("SELECT cadence FROM goals WHERE id = ?", (goal_id,)) or "daily"
+        days = [date.fromisoformat(r["day"]) for r in self.db.all(
+            "SELECT day FROM goal_checkins WHERE goal_id = ? AND done = 1", (goal_id,))]
+
+        def period(d: date) -> tuple[int, int]:
+            if cad == "weekly":
+                y, w, _ = d.isocalendar()
+                return (y, w)
+            if cad == "monthly":
+                return (d.year, d.month)
+            return (d.toordinal(), 0)
+
+        def previous(p: tuple[int, int]) -> tuple[int, int]:
+            if cad == "weekly":
+                monday = date.fromisocalendar(p[0], p[1], 1) - timedelta(days=7)
+                return period(monday)
+            if cad == "monthly":
+                return (p[0] - 1, 12) if p[1] == 1 else (p[0], p[1] - 1)
+            return (p[0] - 1, 0)
+
+        done = {period(d) for d in days}
+        p = period(today())
+        if p not in done:
+            p = previous(p)
         n = 0
-        while d.isoformat() in days:
+        while p in done:
             n += 1
-            d -= timedelta(days=1)
+            p = previous(p)
         return n
 
     def progress(self, g: dict[str, Any]) -> dict[str, Any] | None:

@@ -56,8 +56,17 @@ def roots() -> list[Path]:
     return out
 
 
+SECRET_NAMES = {".env", ".env.local", "id_rsa", "id_ed25519", ".netrc", ".npmrc", ".pypirc"}
+
+
 def allowed(path: Path) -> bool:
+    """Inside your code folders (after following symlinks and '..'), and never secrets or AMO's own data."""
     p = path.expanduser().resolve()
+    if p.name in SECRET_NAMES or p.suffix in (".pem", ".key") or ".git" in p.parts:
+        return False
+    amo = PROJECT_ROOT.resolve()
+    if p == amo / "data" or (amo / "data") in p.parents or ".venv" in p.parts:
+        return False
     return any(p == r or r in p.parents for r in roots())
 
 
@@ -69,13 +78,15 @@ def find_path(ref: str) -> Path | None:
     p = Path(ref).expanduser()
     if p.is_absolute() or ref.startswith(("~", "./")):
         return p.resolve() if p.exists() and allowed(p) else None
+    if ".." in Path(ref).parts:
+        return None
     for root in roots():
-        for cand in [root / ref]:
-            if cand.exists():
-                return cand.resolve()
+        cand = root / ref
+        if cand.exists() and allowed(cand):
+            return cand.resolve()
         for depth_glob in (f"*/{ref}", f"*/*/{ref}", f"*/*/*/{ref}"):
             for cand in root.glob(depth_glob):
-                if not (set(cand.parts) & SKIP_DIRS):
+                if not (set(cand.parts) & SKIP_DIRS) and allowed(cand):
                     return cand.resolve()
     return None
 
@@ -158,12 +169,20 @@ def preview(root: Path, edits: list[Edit]) -> dict[str, str]:
         path = (root / e.file).resolve()
         if not (path == root or root in path.parents) or not path.is_file():
             raise ValueError(f"the fix points at a file I can't use: {e.file}")
-        text = new.get(e.file, path.read_text())
+        key = path.relative_to(root).as_posix()  # "a.py" and "./a.py" are the same file
+        text = new.get(key, path.read_text())
         spot = _locate(text, e.search)
         if spot is None:
             raise ValueError(f"the fix doesn't match {e.file} exactly")
-        new[e.file] = text[:spot[0]] + e.replace + text[spot[1]:]
+        new[key] = text[:spot[0]] + e.replace + text[spot[1]:]
     return new
+
+
+def fingerprint(root: Path, files) -> dict[str, str]:
+    """Hashes of files as they are now — to notice if they change before a fix is applied."""
+    import hashlib
+
+    return {f: hashlib.sha1((root / f).read_bytes()).hexdigest() for f in files}
 
 
 def diff(root: Path, new: dict[str, str]) -> str:
@@ -227,7 +246,8 @@ def propose_fix(ref: str, problem: str = "", db: Database | None = None) -> dict
         return {"proposed": False, "text": "I looked but couldn't find a safe fix. " + answer[:300]}
     new = preview(root, edits)
     d = diff(root, new)
-    db.set_kv(PENDING, json.dumps({"root": str(root), "new": new, "diff": d, "at": local_now().isoformat()}))
+    db.set_kv(PENDING, json.dumps({"root": str(root), "new": new, "diff": d, "at": local_now().isoformat(),
+                                   "before": fingerprint(root, new)}))
     files = ", ".join(new)
     return {"proposed": True, "files": list(new), "diff": d, "lines": changed_lines(d),
             "text": f"Here's the fix for {files} ({changed_lines(d)} lines):\n```diff\n{d}```\nSay “apply the fix” to make the change."}
@@ -243,6 +263,10 @@ def apply_pending(db: Database | None = None) -> dict[str, Any]:
         raise ValueError("there's no fix waiting — ask me to fix something first")
     p = json.loads(raw)
     root = Path(p["root"])
+    if p.get("before") and fingerprint(root, p["new"]) != p["before"]:
+        db.execute("DELETE FROM kv WHERE key = ?", (PENDING,))
+        raise ValueError("the file changed since I proposed the fix, so I didn't apply it (your edits are safe) "
+                         "— ask me to fix it again")
     stamp = local_now().strftime("%Y%m%d-%H%M%S")
     backup = BACKUPS / stamp
     for f, text in p["new"].items():

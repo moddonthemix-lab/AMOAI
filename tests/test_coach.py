@@ -57,8 +57,8 @@ def test_logging_a_trade_gets_coached_and_reviewed(db, llm, monkeypatch):
     TradingJournal(db).close_trade(t["id"], 18030)
 
     rev = coach.review("year", db)["text"]
-    assert "1 trades, net -$30" in rev and "Against: 1 trades, -$30" in rev
-    assert "Breaking your rules cost -$30" in rev and rev.endswith("wait for the timeframes to agree.")
+    assert "1 trades, net -$600" in rev and "Against: 1 trades, -$600" in rev
+    assert "Breaking your rules cost -$600" in rev and rev.endswith("wait for the timeframes to agree.")
 
 
 @pytest.mark.parametrize("said, tool", [
@@ -69,3 +69,8 @@ def test_coach_phrases(said, tool):
     from amo.fastpath import match
 
     assert match(said)[0] == tool
+
+
+def test_stop_after_losses_rule(db):
+    assert coach.parse_rule("Stop trading after 2 losses").kind == "max_losses"
+    assert coach.parse_rule("No trades after 2 losses").kind == "max_losses"  # not a time rule

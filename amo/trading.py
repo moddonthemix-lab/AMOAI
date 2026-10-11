@@ -8,15 +8,23 @@ from .db import Database, get_db, now_iso, parse_when, today
 
 TRADE_FIELDS = {
     "symbol", "side", "setup", "entry", "exit", "stop", "target", "quantity", "fees",
-    "opened_at", "closed_at", "followed_rules", "emotion", "notes",
+    "opened_at", "closed_at", "followed_rules", "emotion", "notes", "multiplier",
 }
+# Futures: dollars per 1.0 point of price, so P&L comes out in real money.
+MULTIPLIERS = {"NQ": 20, "MNQ": 2, "ES": 50, "MES": 5, "YM": 5, "MYM": 0.5, "RTY": 50, "M2K": 5,
+               "CL": 1000, "MCL": 100, "GC": 100, "MGC": 10, "SI": 5000}
+
+
+def multiplier(symbol: str) -> float:
+    return float(MULTIPLIERS.get(symbol.upper().strip().replace("=F", "").replace("1!", ""), 1))
 
 
 def _pnl(t: dict[str, Any]) -> float | None:
     if t.get("exit") is None:
         return None
     direction = 1 if t["side"] == "long" else -1
-    return round((t["exit"] - t["entry"]) * direction * t["quantity"] - (t["fees"] or 0), 2)
+    mult = t.get("multiplier") or 1
+    return round((t["exit"] - t["entry"]) * direction * t["quantity"] * mult - (t["fees"] or 0), 2)
 
 
 def _r_multiple(t: dict[str, Any]) -> float | None:
@@ -43,9 +51,9 @@ class TradingJournal:
         self, symbol: str, side: str, entry: float, quantity: float = 1, **fields: Any
     ) -> dict[str, Any]:
         side = side.lower()
-        if side in ("buy", "call"):
+        if side in ("buy", "call", "calls", "put", "puts"):  # options: you're long the premium either way
             side = "long"
-        elif side in ("sell", "put"):
+        elif side in ("sell",):
             side = "short"
         if side not in ("long", "short"):
             raise ValueError("side must be long or short")
@@ -55,6 +63,7 @@ class TradingJournal:
             data["closed_at"] = parse_when(data["closed_at"])
         if isinstance(data.get("followed_rules"), bool):
             data["followed_rules"] = int(data["followed_rules"])
+        data.setdefault("multiplier", multiplier(symbol))
         tid = self.db.insert(
             "trades",
             {"symbol": symbol.upper().strip(), "side": side, "entry": float(entry),

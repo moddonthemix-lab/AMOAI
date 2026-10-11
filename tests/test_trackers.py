@@ -45,10 +45,10 @@ def test_trading_stats_and_rules(db):
     tj.close_trade(a["id"], 504, followed_rules=True)
     b = tj.open_trade("NQ", "short", 18000, quantity=1, stop=18020)
     b = tj.close_trade(b["id"], 18030, followed_rules=False, emotion="revenge")
-    assert b["pnl"] == -30 and b["r_multiple"] == -1.5
+    assert b["pnl"] == -600 and b["r_multiple"] == -1.5  # NQ: 30 points × $20
     st = tj.stats()
-    assert st["trades"] == 2 and st["net_pnl"] == 10 and st["win_rate"] == 0.5
-    assert st["rule_adherence"] == 0.5 and st["pnl_when_rules_broken"] == -30
+    assert st["trades"] == 2 and st["net_pnl"] == -560 and st["win_rate"] == 0.5
+    assert st["rule_adherence"] == 0.5 and st["pnl_when_rules_broken"] == -600
     assert st["by_setup"]["ORB"]["pnl"] == 40
     tj.add_rule("Max 3 trades per day")
     assert [r["rule"] for r in tj.rules()] == ["Max 3 trades per day"]
@@ -79,3 +79,15 @@ def test_revenue_and_dashboard(db):
     assert rev["total"] == 315
     d = dashboard(db)
     assert d["revenue"]["today"] == 315 and len(d["revenue"]["spark"]) == 14
+
+
+def test_weekly_goal_streak_and_checkins_add_up(db):
+    g = Goals(db)
+    goal = g.add("Post 3 reels", area="content", cadence="weekly")
+    for w in range(3):
+        g.check_in(goal["id"], day=(today() - timedelta(weeks=w + 1)).isoformat())
+    assert g.get(goal["id"])["streak"] == 3  # weeks in a row, not days
+    daily = g.add("Run miles", area="health")
+    g.check_in(daily["id"], value=2)
+    g.check_in(daily["id"], value=3)
+    assert db.one("SELECT value FROM goal_checkins WHERE goal_id = ?", (daily["id"],))["value"] == 5

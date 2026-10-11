@@ -167,3 +167,30 @@ def test_fix_must_make_the_crash_go_away(db, project):
     assert r["result"] == "tests_failed" and "still happens" in r["detail"]
     r = selfrepair.repair(db.one("SELECT * FROM errors"), db, project, coder=lambda p: GOOD_FIX, restart=False)
     assert r["result"] == "applied"
+
+
+def test_code_tools_never_touch_secrets_or_amo_data(project, monkeypatch):
+    from amo.config import settings
+
+    monkeypatch.setattr(settings, "code_dirs", str(project))
+    (project / ".env").write_text("KEY=secret")
+    (project / ".git").mkdir()
+    (project / ".git" / "config").write_text("x")
+    assert coding.find_path("amo/calc.py") == (project / "amo" / "calc.py").resolve()
+    assert coding.find_path(".env") is None and coding.find_path(str(project / ".env")) is None
+    assert coding.find_path(".git/config") is None
+    assert coding.find_path("../etc/passwd") is None
+    assert not coding.allowed(coding.PROJECT_ROOT / "data" / "amo.db")
+
+
+def test_a_fix_is_not_applied_if_the_file_changed(db, llm, project, monkeypatch):
+    from amo.config import settings
+
+    monkeypatch.setattr(settings, "code_dirs", str(project))
+    (project / "pyproject.toml").write_text("[project]\nname='x'\n")
+    llm.script({"role": "assistant", "content": GOOD_FIX})
+    assert coding.propose_fix(f"{project}/amo/calc.py", "crashes on empty", db=db)["proposed"]
+    (project / "amo" / "calc.py").write_text(BUGGY + "\n# my own edit\n")
+    with pytest.raises(ValueError, match="changed since"):
+        coding.apply_pending(db)
+    assert "# my own edit" in (project / "amo" / "calc.py").read_text()

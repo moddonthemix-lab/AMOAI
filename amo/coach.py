@@ -16,13 +16,19 @@ from typing import Any
 
 from .db import Database, get_db
 
+
+def _trade_pnl(t: dict[str, Any]) -> float | None:
+    from .trading import _pnl
+
+    return _pnl(t)
+
 OPEN = dtime(9, 30)  # US market open (New York)
 
 
 @dataclass
 class Rule:
     text: str
-    kind: str                    # first_minutes | after | before | max_per_day | stop | min_rr | continuity | reminder
+    kind: str  # first_minutes | after | before | max_per_day | max_losses | stop | min_rr | continuity | reminder
     value: Any = None
 
 
@@ -57,9 +63,17 @@ def parse_rule(text: str) -> Rule:
     t = text.lower()
     if m := re.search(r"first (\d+)\s*(?:min|minutes)", t):
         return Rule(text, "first_minutes", int(m.group(1)))
-    if m := re.search(r"(?:no|don'?t|never|stop)\b.*\bafter (\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?", t):
+    # "stop trading after 2 losses" / "done after 3 red trades" — a count, not a clock time
+    if m := re.search(r"after (\d+|one|two|three|four|five)\s*(?:straight |consecutive |red |losing )?"
+                      r"(?:loss(?:es)?|losers?|red trades?|losing trades?|l'?s)\b", t):
+        words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
+        return Rule(text, "max_losses", int(words.get(m.group(1), m.group(1))))
+    _not_count = r"(?!\s*(?:trades?|wins?|winners?|green|red|loss(?:es)?|losers?|times?|setups?)\b)"
+    if m := re.search(r"(?:no|don'?t|never|stop)\b.*\bafter (\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?"
+                      + _not_count, t):
         return Rule(text, "after", _clock(m.group(1), m.group(2), m.group(3)))
-    if m := re.search(r"(?:no|don'?t|never)\b.*\bbefore (\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?", t):
+    if m := re.search(r"(?:no|don'?t|never)\b.*\bbefore (\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?"
+                      + _not_count, t):
         return Rule(text, "before", _clock(m.group(1), m.group(2), m.group(3)))
     if m := re.search(r"(?:max(?:imum)?|no more than|at most|only|limit(?: of)?)\s*(\d+)\s*trades?\s*(?:a|per|each)\s*day", t):
         return Rule(text, "max_per_day", int(m.group(1)))
@@ -70,6 +84,19 @@ def parse_rule(text: str) -> Rule:
     if re.search(r"continuity|ftfc|with the trend|timeframes? (?:agree|align)", t):
         return Rule(text, "continuity")
     return Rule(text, "reminder")
+
+
+def to_ny(local: datetime) -> datetime:
+    """A naive time in AMO's timezone (settings.timezone) → naive New York time (market rules)."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        from .config import settings
+
+        return local.replace(tzinfo=ZoneInfo(settings.timezone)).astimezone(
+            ZoneInfo("America/New_York")).replace(tzinfo=None)
+    except Exception:  # noqa: BLE001
+        return local
 
 
 def _ny_now() -> datetime:
@@ -84,7 +111,7 @@ def _ny_now() -> datetime:
 def check_trade(symbol: str, side: str, entry: float | None = None, stop: float | None = None,
                 target: float | None = None, when: datetime | None = None, db: Database | None = None,
                 strat_read: dict[str, Any] | None = None, exclude_trade_id: int | None = None,
-                planned: bool = False) -> Check:
+                planned: bool = False, local_when: datetime | None = None) -> Check:
     """planned=True: asking before a trade — a missing stop/target is a reminder, not a violation."""
     """Check a (planned or just-logged) trade against your rules and The Strat."""
     db = db or get_db()
@@ -134,7 +161,7 @@ def check_trade(symbol: str, side: str, entry: float | None = None, stop: float 
 
     # ---- your rules
     rules = [parse_rule(r["rule"]) for r in db.all("SELECT rule FROM trading_rules WHERE active = 1")]
-    today = when.date().isoformat()
+    today = (local_when or when).date().isoformat()  # trades are stored in your local time
     trades_today = db.scalar("SELECT COUNT(*) FROM trades WHERE substr(opened_at, 1, 10) = ?"
                              + (" AND id != ?" if exclude_trade_id else ""),
                              (today, exclude_trade_id) if exclude_trade_id else (today,))
@@ -150,6 +177,12 @@ def check_trade(symbol: str, side: str, entry: float | None = None, stop: float 
             broken = t_now < r.value
         elif r.kind == "max_per_day":
             broken = trades_today >= r.value
+        elif r.kind == "max_losses":
+            losers = [t for t in db.all("SELECT * FROM trades WHERE exit IS NOT NULL AND substr(opened_at, 1, 10) = ?"
+                                        + (" AND id != ?" if exclude_trade_id else ""),
+                                        (today, exclude_trade_id) if exclude_trade_id else (today,))
+                      if (lambda p: p is not None and p < 0)(_trade_pnl(t))]
+            broken = len(losers) >= r.value
         elif r.kind == "stop":
             if stop is None and planned:
                 c.reminders.append("decide your stop before you enter")

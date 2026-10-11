@@ -413,6 +413,14 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE corrections ADD COLUMN reply TEXT;
     """,
+    # 20 — futures: dollars per point (NQ $20, ES $50 …) so P&L is in real money
+    """
+    ALTER TABLE trades ADD COLUMN multiplier REAL NOT NULL DEFAULT 1;
+    UPDATE trades SET multiplier = CASE replace(upper(symbol), '=F', '')
+        WHEN 'NQ' THEN 20 WHEN 'MNQ' THEN 2 WHEN 'ES' THEN 50 WHEN 'MES' THEN 5 WHEN 'YM' THEN 5
+        WHEN 'MYM' THEN 0.5 WHEN 'RTY' THEN 50 WHEN 'M2K' THEN 5 WHEN 'CL' THEN 1000 WHEN 'MCL' THEN 100
+        WHEN 'GC' THEN 100 WHEN 'MGC' THEN 10 WHEN 'SI' THEN 5000 ELSE 1 END;
+    """,
 ]
 
 

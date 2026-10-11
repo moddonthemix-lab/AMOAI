@@ -12,6 +12,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Callable
 
 from .crm import StudioCRM
@@ -352,8 +353,14 @@ def log_trade(symbol: str, side: str, entry: float, **kw):
     t = tj.open_trade(symbol, side, entry, **kw)
     # The coach checks it against your rules and The Strat, and remembers whether it was
     # taken with continuity (for your reviews).
+    # judge it by when you traded, not when you wrote it down
+    try:
+        traded_at = datetime.fromisoformat(t["opened_at"]) if kw.get("opened_at") else None
+    except (TypeError, ValueError):
+        traded_at = None
     check = coach.check_trade(symbol, t["side"], entry, kw.get("stop"), kw.get("target"), db=db,
-                              exclude_trade_id=t["id"])
+                              exclude_trade_id=t["id"], when=coach.to_ny(traded_at) if traded_at else None,
+                              local_when=traded_at)
     note = coach.summary(check, symbol, t["side"], planned=False)
     update = {"coach_notes": note or None}
     if check.with_continuity is not None:
