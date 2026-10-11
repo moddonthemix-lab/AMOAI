@@ -409,6 +409,10 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX timings_at ON timings(at);
     """,
+    # 19 — mistake log: what AMO said when it got something wrong
+    """
+    ALTER TABLE corrections ADD COLUMN reply TEXT;
+    """,
 ]
 
 

@@ -184,7 +184,9 @@ CONFIRM: dict[str, Callable[[dict, dict], str]] = {
     "log_trade": _trade,
     "close_trade": _closed,
     "add_trading_rule": lambda r, a: f"New trading rule saved: {r.get('rule')}",
-    "add_goal": lambda r, a: f"New {r.get('cadence', '')} goal: {r.get('title')}.".replace("  ", " "),
+    "add_goal": lambda r, a: (f"You already have “{r.get('title')}” as a {r.get('cadence', '')} goal."
+                              if r.get("duplicate") else
+                              f"New {r.get('cadence', '')} goal: {r.get('title')}.").replace("  ", " "),
     "check_in_goal": _goal_checkin,
     "add_cravvr_task": lambda r, a: f"Added Cravvr task: {r.get('title')}.",
     "update_cravvr_task": lambda r, a: f"Cravvr task “{r.get('title')}” is now {r.get('status')}.",

@@ -172,7 +172,6 @@ def cmd_mic_test(_a):
     print("GO — speak now")
     audio = sd.rec(int(5 * 16000), samplerate=16000, channels=1, dtype="float32")
     sd.wait()
-    audio = audio[:, 0]
     level = float(np.sqrt(np.mean(audio**2)))
     peak = float(np.max(np.abs(audio))) if len(audio) else 0.0
     bar = "█" * min(30, int(peak * 60))
@@ -676,6 +675,36 @@ def cmd_stats(a):
     print(report_text(days=a.days))
 
 
+def cmd_eval(a):
+    from . import evals
+
+    if a.add:
+        c = evals.add_custom(a.add, a.tool, a.expect)
+        print(f"added: “{c.say}” → {', '.join(c.tool) or (c.reply_has[0] if c.reply_has else 'no tool')}"
+              f"  ({evals.CUSTOM})")
+        return
+    models = [m.strip() for m in (a.models or "").split(",") if m.strip()] or [None]
+
+    def progress(i, n, r):
+        mark = "✓" if r["ok"] else "✗"
+        print(f"\r  {i}/{n} {mark} {r['say'][:50]:<50}", end="", flush=True)
+
+    summaries = []
+    for m in models:
+        print(f"\n▸ {m or settings.chat_model}")
+        s = evals.run(model=m, mine=a.mine, offline=a.offline, only=a.only, progress=progress)
+        print("\r" + " " * 70 + "\r" + evals.text(s))
+        summaries.append(s)
+    if len(summaries) > 1:
+        print("\n" + evals.compare(summaries))
+
+
+def cmd_mistakes(a):
+    from .selfreview import mistakes_text
+
+    print(mistakes_text(limit=a.limit))
+
+
 def cmd_review(_a):
     from .selfreview import review
 
@@ -803,6 +832,18 @@ def main(argv: list[str] | None = None) -> None:
 
     sub.add_parser("brief", help="print today's brief").set_defaults(fn=cmd_brief)
     sub.add_parser("learn", help="learn from recent conversations now").set_defaults(fn=cmd_learn)
+    ev = sub.add_parser("eval", help="score AMO on the test set (and compare AI models)")
+    ev.add_argument("--models", default="", help="comma-separated, e.g. gemma4:e2b,qwen3:4b")
+    ev.add_argument("--mine", action="store_true", help="also replay your own past requests (on a copy of your data)")
+    ev.add_argument("--offline", action="store_true", help="skip cases that need the internet")
+    ev.add_argument("--only", default="", help="a tag (goals, studio, trading, ai, instant…) or source (mine, custom)")
+    ev.add_argument("--add", default="", help="add your own case: the request")
+    ev.add_argument("--tool", default="", help="with --add: the tool it should use (e.g. add_goal)")
+    ev.add_argument("--expect", default="", help="with --add: text the reply should contain")
+    ev.set_defaults(fn=cmd_eval)
+    mk = sub.add_parser("mistakes", help="what AMO got wrong lately (corrections, undo, 'that's wrong', failures)")
+    mk.add_argument("--limit", type=int, default=20)
+    mk.set_defaults(fn=cmd_mistakes)
     st = sub.add_parser("stats", help="speed report: where AMO's time goes and what would help")
     st.add_argument("--days", type=int, default=7)
     st.set_defaults(fn=cmd_stats)

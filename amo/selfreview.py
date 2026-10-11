@@ -21,11 +21,16 @@ _TIME = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?\b", re.I)
 _NAME = re.compile(r"\b[A-Z][a-z]+\b")
 
 
-def log_correction(kind: str, said: str, meant: str, db: Database | None = None) -> None:
-    """kind: misheard | undo | pronunciation | style"""
+WRONG_RE = re.compile(r"^(?:(?:hey )?amo[ ,]*)?(?:no[ ,]+)?(?:that'?s|that is|that was|you'?re|you are|you got (?:it|that))"
+                      r" (?:wrong|not right|incorrect|not what i (?:asked|wanted|meant))|^(?:wrong|nope,? wrong)[.!]*$", re.I)
+
+
+def log_correction(kind: str, said: str, meant: str, db: Database | None = None, reply: str = "") -> None:
+    """kind: misheard | undo | pronunciation | style | wrong (you said it was wrong) | failed (AMO couldn't)"""
     try:
         (db or get_db()).insert("corrections", {"kind": kind, "said": (said or "")[:300],
-                                                "meant": (meant or "")[:300], "created_at": now_iso()})
+                                                "meant": (meant or "")[:300], "reply": (reply or "")[:500],
+                                                "created_at": now_iso()})
     except Exception:  # noqa: BLE001 — logging must never break a reply
         pass
 
@@ -46,6 +51,27 @@ def classify(said: str, meant: str) -> str:
     if re.search(r"\$?\d", meant or "") and re.findall(r"\d+", meant or "") != re.findall(r"\d+", said or ""):
         return "amounts"
     return "request"
+
+
+def mistakes(db: Database | None = None, limit: int = 20) -> list[dict[str, Any]]:
+    return (db or get_db()).all("SELECT * FROM corrections WHERE kind NOT IN ('style', 'pronunciation') "
+                                "ORDER BY id DESC LIMIT ?", (limit,))
+
+
+def mistakes_text(db: Database | None = None, limit: int = 20) -> str:
+    rows = mistakes(db, limit)
+    if not rows:
+        return "No mistakes logged. (Corrections, \"that's wrong\", undo and failed requests show up here.)"
+    label = {"misheard": "misheard", "undo": "undone", "wrong": "you said wrong", "failed": "couldn't do it"}
+    out = []
+    for r in rows:
+        line = f"{r['created_at'][:16].replace('T', ' ')}  [{label.get(r['kind'], r['kind'])}]  “{r['said']}”"
+        if r["meant"]:
+            line += f" → meant “{r['meant']}”"
+        if r.get("reply"):
+            line += f"\n      AMO: {r['reply'][:140]}"
+        out.append(line)
+    return "\n".join(out)
 
 
 def review(db: Database | None = None, now: datetime | None = None, days: int = 7) -> dict[str, Any]:

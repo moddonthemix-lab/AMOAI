@@ -209,6 +209,10 @@ class Agent:
         turn.info["tools"] = [t["name"] for t in out["tool_calls"]]
         turn.info["ok"] = turn.info.get("ok", True) and not any(
             isinstance(t.get("result"), dict) and "error" in t["result"] for t in out["tool_calls"])
+        if own and (out["content"] or "").startswith(("Sorry — I didn't manage", "Sorry, I couldn't")):
+            from .selfreview import log_correction
+
+            log_correction("failed", turn.request, "", self.db, reply=out["content"])
         if own:
             turn.save(self.db, model=model or settings.chat_model)
         return out
@@ -244,6 +248,12 @@ class Agent:
 
         earlier = [m["content"] for m in history[:-1] if m["role"] == "user" and isinstance(m["content"], str)]
         previous_request = earlier[-1] if earlier else ""
+        from .selfreview import WRONG_RE
+
+        if user_text and WRONG_RE.match(user_text.strip()):  # "that's wrong" → into the mistake log
+            last_reply = next((m["content"] for m in reversed(history[:-1])
+                               if m["role"] == "assistant" and isinstance(m["content"], str)), "")
+            log_correction("wrong", previous_request, "", self.db, reply=last_reply)
         if user_text and undo.UNDO_RE.match(user_text.strip()):
             content = undo.undo_last(self.db)
             if content.startswith("Undid"):

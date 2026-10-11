@@ -433,7 +433,12 @@ def add_trading_rule(rule: str):
       target=("number", "Numeric target per period, if measurable.", False),
       due_date=("string", "For one-off goals.", False))
 def add_goal(title: str, **kw):
-    return Goals(get_db()).add(title, **kw)
+    db = get_db()
+    same = db.one("SELECT id FROM goals WHERE active = 1 AND lower(trim(title)) = lower(trim(?)) AND cadence = ?",
+                  (title, kw.get("cadence") or "daily"))
+    if same:  # you already have it — don't make a second copy
+        return {**Goals(db).get(same["id"]), "duplicate": True}
+    return Goals(db).add(title, **kw)
 
 
 @tool("Check in on a goal (mark done today, or log progress toward a numeric target).",

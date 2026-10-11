@@ -1,0 +1,799 @@
+[
+ {
+  "say": "what time is it",
+  "path": "instant",
+  "reply_any": [
+   "AM",
+   "PM"
+  ],
+  "tags": [
+   "instant"
+  ]
+ },
+ {
+  "say": "what's today's date",
+  "path": "instant",
+  "reply_has": [
+   "It's"
+  ],
+  "tags": [
+   "instant"
+  ]
+ },
+ {
+  "say": "what's 15 percent of 240",
+  "path": "instant",
+  "reply_has": [
+   "36"
+  ],
+  "tags": [
+   "instant"
+  ]
+ },
+ {
+  "say": "what is twelve times seven",
+  "path": "instant",
+  "reply_has": [
+   "84"
+  ],
+  "tags": [
+   "instant"
+  ]
+ },
+ {
+  "say": "how many ounces in a pound",
+  "path": "instant",
+  "reply_has": [
+   "16"
+  ],
+  "tags": [
+   "instant"
+  ]
+ },
+ {
+  "say": "convert 5 miles to km",
+  "path": "instant",
+  "reply_has": [
+   "8.05"
+  ],
+  "tags": [
+   "instant"
+  ]
+ },
+ {
+  "say": "how many days until christmas",
+  "path": "instant",
+  "reply_has": [
+   "Christmas"
+  ],
+  "tags": [
+   "instant"
+  ]
+ },
+ {
+  "say": "what's 72 degrees fahrenheit in celsius",
+  "path": "instant",
+  "reply_has": [
+   "22"
+  ],
+  "tags": [
+   "instant"
+  ]
+ },
+ {
+  "say": "set a pasta timer for 10 minutes",
+  "tool": "set_timer",
+  "args": {
+   "label": "pasta"
+  },
+  "tags": [
+   "timers"
+  ]
+ },
+ {
+  "say": "remind me in 30 seconds to stir the soup",
+  "tool": "set_timer",
+  "args": {
+   "message": "stir"
+  },
+  "tags": [
+   "timers"
+  ]
+ },
+ {
+  "say": "remind me tomorrow at 9 to call Jay",
+  "tool": "set_reminder",
+  "args": {
+   "message": "call Jay"
+  },
+  "tags": [
+   "timers"
+  ]
+ },
+ {
+  "say": "set an alarm for 7am",
+  "tool": "set_reminder",
+  "tags": [
+   "timers"
+  ]
+ },
+ {
+  "say": "what timers do I have",
+  "before": [
+   "set a pasta timer for 10 minutes"
+  ],
+  "tool": "list_timers",
+  "reply_has": [
+   "pasta"
+  ],
+  "tags": [
+   "timers"
+  ]
+ },
+ {
+  "say": "cancel the pasta timer",
+  "before": [
+   "set a pasta timer for 10 minutes"
+  ],
+  "tool": "cancel_timer",
+  "sql": "SELECT COUNT(*) FROM timers WHERE status = 'active'",
+  "sql_equals": 0,
+  "tags": [
+   "timers"
+  ]
+ },
+ {
+  "say": "add a daily goal: drink a gallon of water",
+  "tool": "add_goal",
+  "args": {
+   "title": "water"
+  },
+  "tags": [
+   "goals"
+  ]
+ },
+ {
+  "say": "can you put calling my mom on my daily goals",
+  "tool": "add_goal",
+  "args": {
+   "title": "mom"
+  },
+  "tags": [
+   "goals",
+   "ai"
+  ]
+ },
+ {
+  "say": "I finished my beat today",
+  "tool": [
+   "check_in_goal",
+   "update_record"
+  ],
+  "tags": [
+   "goals",
+   "ai"
+  ]
+ },
+ {
+  "say": "done with the gym",
+  "tool": [
+   "check_in_goal",
+   "update_record"
+  ],
+  "tags": [
+   "goals",
+   "ai"
+  ]
+ },
+ {
+  "say": "what are my goals",
+  "tool": [
+   "list_goals",
+   "find_records",
+   "overview"
+  ],
+  "reply_any": [
+   "beat",
+   "gym"
+  ],
+  "tags": [
+   "goals",
+   "ai"
+  ]
+ },
+ {
+  "say": "delete the gym goal",
+  "tool": [
+   "delete_record"
+  ],
+  "sql": "SELECT COUNT(*) FROM goals WHERE active = 1 AND title = 'Gym'",
+  "sql_equals": 0,
+  "tags": [
+   "goals"
+  ]
+ },
+ {
+  "say": "delete all my daily goals",
+  "tool": "delete_all_records",
+  "sql": "SELECT COUNT(*) FROM goals WHERE active = 1",
+  "sql_equals": 0,
+  "tags": [
+   "goals"
+  ]
+ },
+ {
+  "say": "rename my gym goal to gym 5 days a week",
+  "tool": "update_record",
+  "tags": [
+   "goals",
+   "ai"
+  ]
+ },
+ {
+  "say": "add a client Marcus Lee, artist name M-Lee, 555-0199",
+  "tool": "add_client",
+  "args": {
+   "name": "Marcus"
+  },
+  "tags": [
+   "studio",
+   "ai"
+  ]
+ },
+ {
+  "say": "book Lil Jay Friday at 7pm for 3 hours at 50 an hour",
+  "tool": "book_session",
+  "args": {
+   "client": "Jay"
+  },
+  "tags": [
+   "studio",
+   "ai"
+  ]
+ },
+ {
+  "say": "book Ty tomorrow at 2pm",
+  "tool": "book_session",
+  "args": {
+   "client": "Ty"
+  },
+  "tags": [
+   "studio",
+   "ai"
+  ]
+ },
+ {
+  "say": "who owes me money",
+  "tool": [
+   "unpaid_sessions",
+   "overview",
+   "revenue"
+  ],
+  "tags": [
+   "studio",
+   "ai"
+  ]
+ },
+ {
+  "say": "Lil Jay paid 150 cash app",
+  "tool": "record_payment",
+  "args": {
+   "amount": "150"
+  },
+  "tags": [
+   "studio",
+   "ai"
+  ]
+ },
+ {
+  "say": "what's my schedule tomorrow",
+  "tool": [
+   "studio_schedule",
+   "upcoming_sessions",
+   "overview"
+  ],
+  "reply_any": [
+   "Jay",
+   "7"
+  ],
+  "tags": [
+   "studio",
+   "ai"
+  ]
+ },
+ {
+  "say": "move Lil Jay's session to Saturday at 6pm",
+  "tool": [
+   "update_session",
+   "update_record"
+  ],
+  "tags": [
+   "studio",
+   "ai"
+  ]
+ },
+ {
+  "say": "cancel Lil Jay's session",
+  "tool": [
+   "update_session",
+   "update_record",
+   "delete_record"
+  ],
+  "tags": [
+   "studio",
+   "ai"
+  ]
+ },
+ {
+  "say": "who hasn't booked in a while",
+  "tool": [
+   "clients_to_follow_up",
+   "find_client",
+   "find_records"
+  ],
+  "tags": [
+   "studio",
+   "ai"
+  ]
+ },
+ {
+  "say": "text Lil Jay that we're starting at 8 instead",
+  "tool": "text_client",
+  "args": {
+   "client": "Jay"
+  },
+  "reply_any": [
+   "send",
+   "text"
+  ],
+  "tags": [
+   "studio"
+  ]
+ },
+ {
+  "say": "bought Jordan 1 Chicago size 10 for 180",
+  "tool": "add_resale_item",
+  "args": {
+   "cost": "180"
+  },
+  "tags": [
+   "reselling",
+   "ai"
+  ]
+ },
+ {
+  "say": "sold the Jordan 4s on StockX for 320 with 30 in fees",
+  "tool": [
+   "mark_item_sold",
+   "update_record"
+  ],
+  "tags": [
+   "reselling",
+   "ai"
+  ]
+ },
+ {
+  "say": "listed the Jordan 4s on eBay for 299",
+  "tool": [
+   "list_resale_item",
+   "update_record"
+  ],
+  "tags": [
+   "reselling",
+   "ai"
+  ]
+ },
+ {
+  "say": "what's in my inventory",
+  "tool": [
+   "resale_inventory",
+   "find_records"
+  ],
+  "reply_any": [
+   "Jordan"
+  ],
+  "tags": [
+   "reselling",
+   "ai"
+  ]
+ },
+ {
+  "say": "how's reselling doing this month",
+  "tool": [
+   "resale_summary",
+   "revenue",
+   "overview"
+  ],
+  "tags": [
+   "reselling",
+   "ai"
+  ]
+ },
+ {
+  "say": "long TSLA at 250 stop 245 target 265",
+  "tool": "log_trade",
+  "args": {
+   "symbol": "TSLA"
+  },
+  "tags": [
+   "trading",
+   "ai"
+  ]
+ },
+ {
+  "say": "closed my NQ trade at 18040",
+  "tool": [
+   "close_trade",
+   "update_record"
+  ],
+  "tags": [
+   "trading",
+   "ai"
+  ]
+ },
+ {
+  "say": "add a rule: no trades in the first 5 minutes",
+  "tool": "add_trading_rule",
+  "tags": [
+   "trading"
+  ]
+ },
+ {
+  "say": "what are my trading rules",
+  "tool": [
+   "trading_rules",
+   "find_records"
+  ],
+  "reply_any": [
+   "11"
+  ],
+  "tags": [
+   "trading",
+   "ai"
+  ]
+ },
+ {
+  "say": "review my trading this week",
+  "tool": "trading_review",
+  "tags": [
+   "trading"
+  ]
+ },
+ {
+  "say": "what are my open positions",
+  "tool": [
+   "open_positions",
+   "find_records"
+  ],
+  "reply_any": [
+   "NQ"
+  ],
+  "tags": [
+   "trading",
+   "ai"
+  ]
+ },
+ {
+  "say": "what's your input on Amazon or Tesla setups",
+  "tool": "strat_compare",
+  "tags": [
+   "strat"
+  ],
+  "network": true
+ },
+ {
+  "say": "how does NVDA look",
+  "tool": "strat_analysis",
+  "tags": [
+   "strat"
+  ],
+  "network": true
+ },
+ {
+  "say": "pull up the weekly chart for NQ",
+  "tool": [
+   "show_chart",
+   "strat_analysis"
+  ],
+  "tags": [
+   "strat"
+  ],
+  "network": true
+ },
+ {
+  "say": "any setups on SPY",
+  "tool": "strat_analysis",
+  "tags": [
+   "strat"
+  ],
+  "network": true
+ },
+ {
+  "say": "should I go long TSLA at 250 stop 245",
+  "tool": "check_trade",
+  "tags": [
+   "strat"
+  ],
+  "network": true
+ },
+ {
+  "say": "add MSFT to my watchlist",
+  "tool": "watchlist_add",
+  "tags": [
+   "strat"
+  ],
+  "network": true
+ },
+ {
+  "say": "what's on my watchlist",
+  "tool": "watchlist_show",
+  "reply_any": [
+   "AMZN"
+  ],
+  "tags": [
+   "strat"
+  ]
+ },
+ {
+  "say": "add a cravvr task: call the food supplier, high priority",
+  "tool": "add_cravvr_task",
+  "args": {
+   "title": "supplier"
+  },
+  "tags": [
+   "cravvr",
+   "ai"
+  ]
+ },
+ {
+  "say": "what's open for cravvr",
+  "tool": [
+   "cravvr_tasks",
+   "find_records"
+  ],
+  "reply_any": [
+   "menu"
+  ],
+  "tags": [
+   "cravvr",
+   "ai"
+  ]
+ },
+ {
+  "say": "how much did I make this month",
+  "tool": [
+   "revenue",
+   "overview"
+  ],
+  "tags": [
+   "money",
+   "ai"
+  ]
+ },
+ {
+  "say": "how am I doing overall",
+  "tool": [
+   "overview",
+   "revenue"
+  ],
+  "tags": [
+   "money",
+   "ai"
+  ]
+ },
+ {
+  "say": "remember that my mixing rate is 75 a song",
+  "tool": "remember",
+  "args": {
+   "content": "75"
+  },
+  "tags": [
+   "memory"
+  ]
+ },
+ {
+  "say": "who's Marcus",
+  "reply_any": [
+   "engineer",
+   "Tuesday"
+  ],
+  "tags": [
+   "memory",
+   "ai"
+  ]
+ },
+ {
+  "say": "forget that Marcus works Tuesdays",
+  "tool": [
+   "forget",
+   "delete_record"
+  ],
+  "tags": [
+   "memory",
+   "ai"
+  ]
+ },
+ {
+  "say": "note: hook idea, the city never sleeps",
+  "tool": "add_note",
+  "tags": [
+   "notes"
+  ]
+ },
+ {
+  "say": "what notes do I have about beats",
+  "tool": "find_notes",
+  "reply_has": [
+   "140"
+  ],
+  "tags": [
+   "notes"
+  ]
+ },
+ {
+  "say": "read my last note",
+  "tool": "find_notes",
+  "reply_has": [
+   "Beat idea"
+  ],
+  "tags": [
+   "notes"
+  ]
+ },
+ {
+  "say": "from now on keep answers short",
+  "tool": "set_preference",
+  "tags": [
+   "prefs"
+  ]
+ },
+ {
+  "say": "that's too long",
+  "tool": "set_preference",
+  "tags": [
+   "prefs"
+  ]
+ },
+ {
+  "say": "undo that",
+  "before": [
+   "add a daily goal: drink waiter"
+  ],
+  "reply_has": [
+   "Undid"
+  ],
+  "sql": "SELECT COUNT(*) FROM goals WHERE active = 1 AND title = 'Drink waiter'",
+  "sql_equals": 0,
+  "tags": [
+   "undo"
+  ]
+ },
+ {
+  "say": "no, I said add a daily goal: drink water",
+  "before": [
+   "add a daily goal: drink waiter"
+  ],
+  "reply_has": [
+   "Undid"
+  ],
+  "sql": "SELECT COUNT(*) FROM goals WHERE active = 1 AND title IN ('Drink waiter', 'Drink water')",
+  "sql_equals": 1,
+  "tags": [
+   "undo"
+  ]
+ },
+ {
+  "say": "you misheard me",
+  "before": [
+   "add a daily goal: drink waiter"
+  ],
+  "reply_has": [
+   "what did you say"
+  ],
+  "tags": [
+   "undo"
+  ]
+ },
+ {
+  "say": "hey",
+  "no_tool": true,
+  "reply_not": [
+   "no recall",
+   "no context",
+   "tool",
+   "as an AI"
+  ],
+  "tags": [
+   "chat",
+   "ai"
+  ]
+ },
+ {
+  "say": "what can you do",
+  "no_tool": true,
+  "reply_any": [
+   "studio",
+   "goal",
+   "trad",
+   "remember"
+  ],
+  "tags": [
+   "chat",
+   "ai"
+  ]
+ },
+ {
+  "say": "thanks",
+  "no_tool": true,
+  "reply_not": [
+   "no recall",
+   "as an AI"
+  ],
+  "tags": [
+   "chat",
+   "ai"
+  ]
+ },
+ {
+  "say": "I'm tired today",
+  "no_tool": true,
+  "reply_not": [
+   "as an AI"
+  ],
+  "tags": [
+   "chat",
+   "ai"
+  ]
+ },
+ {
+  "say": "put 'stretch for ten minutes' on my daily goals please",
+  "tool": "add_goal",
+  "tags": [
+   "goals",
+   "ai"
+  ]
+ },
+ {
+  "say": "log that Ty paid me 100 in cash",
+  "tool": "record_payment",
+  "args": {
+   "amount": "100"
+  },
+  "tags": [
+   "studio",
+   "ai"
+  ]
+ },
+ {
+  "say": "who won the last super bowl",
+  "tool": "web_search",
+  "tags": [
+   "web"
+  ],
+  "network": true
+ },
+ {
+  "say": "why does my python script say IndexError: list index out of range",
+  "path": "coder",
+  "reply_any": [
+   "index",
+   "list",
+   "range"
+  ],
+  "tags": [
+   "coding"
+  ]
+ },
+ {
+  "say": "add a daily goal: make one beat",
+  "tool": "add_goal",
+  "reply_has": [
+   "already have"
+  ],
+  "sql": "SELECT COUNT(*) FROM goals WHERE active = 1 AND title = 'Make one beat'",
+  "sql_equals": 1,
+  "tags": [
+   "goals"
+  ]
+ }
+]

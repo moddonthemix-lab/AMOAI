@@ -312,6 +312,18 @@ The model must support tool calling (Gemma 3 doesn't; Gemma 4 does) — Llama 3.
 
 ---
 
+## Tuning AMO (measure, don't guess)
+
+- `amo stats` — the speed report: time to first word/sound, where the time goes (speech-to-text, the AI
+  model, tools, audio), the slowest requests, and what would help.
+- `amo mistakes` — what AMO got wrong lately: misheard corrections, "undo that", "that's wrong", failed requests.
+- `amo eval` — scores AMO on ~75 built-in requests (goals, studio, trading, the Strat, timers, notes, undo,
+  small talk…) plus your own, each in a throwaway database (your data is never touched, nothing is sent).
+  - `amo eval --models gemma4:e2b,qwen3:4b,llama3.2:3b` compares models on the same requests and picks one
+  - `amo eval --mine` also replays your own past requests that worked, on a copy of your data
+  - `amo eval --add "put calling mom on my goals" --tool add_goal` adds your own case
+  - `amo eval --offline` skips the ones that need the internet
+
 ## CLI
 
 ```
