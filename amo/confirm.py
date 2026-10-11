@@ -203,7 +203,7 @@ CONFIRM: dict[str, Callable[[dict, dict], str]] = {
     "send_text": lambda r, a: f"Sent to {r['client']}.",
     "cancel_text": lambda r, a: "Okay, I won't send it." if r["cancelled"] else "There was no text waiting.",
     "delete_record": lambda r, a: f"Deleted {r['label']} “{r['name']}”.",
-    "delete_all_records": lambda r, a: (f"Deleted {r['deleted']} {r['what']}: " + ", ".join(r["names"][:8]) + "."
+    "delete_all_records": lambda r, a: r["text"] if r.get("confirm") else (f"Deleted {r['deleted']} {r['what']}: " + ", ".join(r["names"][:8]) + "."
                                         if r["deleted"] else f"You don't have any {r['what']} to delete."),
     "update_record": lambda r, a: f"Updated {r['label']} “{r['name']}”: "
                                   + ", ".join(f"{k.replace('_', ' ')} → {v}" for k, v in r["changes"].items()) + ".",

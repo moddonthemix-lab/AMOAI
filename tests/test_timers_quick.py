@@ -2,6 +2,8 @@
 
 from datetime import datetime, timedelta
 
+import pytest
+
 from amo import timers
 from amo.agent import Agent
 from amo.proactive import take_pending
@@ -104,3 +106,28 @@ def test_undo_a_misheard_timer(db, llm):
     assert out["content"].startswith("Undid that: cancelled the timer.")
     assert [t["due_at"] for t in timers.active(db)] and len(timers.active(db)) == 1
     assert "15 minutes" in out["content"]
+
+
+@pytest.mark.parametrize("said, minutes", [
+    ("set a timer for half an hour", 30), ("remind me in half an hour to call Jay", 30),
+    ("timer for 2 and a half hours", 150), ("set a timer for one and a half hours", 90),
+    ("timer for 1 hour 30 minutes", 90), ("remind me in 1 hour and 15 minutes to eat", 75),
+    ("timer for a minute and a half", 1.5), ("set a 5m timer", 5), ("remind me 10 minutes from now to stir", 10),
+])
+def test_durations_add_up(said, minutes):
+    tool, args = timers.match(said, datetime(2030, 3, 5, 14, 0))
+    assert tool == "set_timer" and args["minutes"] == minutes
+
+
+def test_a_duration_inside_a_reminder_is_not_a_timer():
+    now = datetime(2030, 3, 5, 14, 0)  # a Tuesday
+    tool, args = timers.match("remind me tomorrow at 9 about the 3 hour mix session", now)
+    assert tool == "set_reminder" and args["when"] == "2030-03-06T09:00" and "3 hour mix session" in args["message"]
+    tool, args = timers.match("remind me on Friday to book a 2 hour session with Jay", now)
+    assert tool == "set_reminder" and args["when"].startswith("2030-03-08")
+    assert timers.match("remind me to pay Jay for 2 sessions", now) is None  # "for 2" isn't 2 o'clock
+    assert timers.match("set an alarm for 7", now)[0] == "set_reminder"
+    # more than a reminder → the AI handles the whole request
+    assert timers.match("Book Jay for Friday at 7 and remind me to text him", now) is None
+    assert timers.match("when is the alarm going off", now) == ("timer_left", {"target": ""})
+    assert timers.match("when does Jay's reminder go off", now) == ("timer_left", {"target": "jay"})

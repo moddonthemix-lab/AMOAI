@@ -173,7 +173,7 @@ def _check_match(t: str) -> tuple[str, dict[str, Any]] | None:
     m = CHECK_RE.match(_clean_sentence(t).replace(" at the ", " at "))
     if not m:
         return None
-    syms = _tickers(m.group("sym"), t + " stock")
+    syms = _tickers(m.group("sym"), t)  # a real ticker, not "should I sell my Jordans"
     if not syms:
         return None
     side = "short" if m.group("side").lower().startswith(("sell", "short")) else "long"
@@ -194,10 +194,15 @@ CANCEL_TEXT_RE = re.compile(r"^(?:no,?\s*)?(?:cancel(?: it| that| the text)?|don
 
 # "No, I said Thursday" / "you misheard me" / "that's not what I said — book Jay"
 _CORR_LEAD = r"(?:(?:no+|nope|wait|hold on|hang on|stop|sorry|actually|hey amo|amo)\b[ ,.!-]*)"
+_SURE = (r"(?:that'?s not what i (?:said|meant|asked(?: for)?)|that'?s not it|you misheard(?: me)?|"
+         r"you heard (?:me )?wrong|you got (?:it|that|me) wrong|i didn'?t say(?: that)?|i meant(?! to\b))")
 CORRECTION_RE = re.compile(
-    rf"^(?:{_CORR_LEAD}*(?:that'?s not what i (?:said|meant|asked(?: for)?)|that'?s not it|you misheard(?: me)?|"
-    r"you heard (?:me )?wrong|you got (?:it|that|me) wrong|i didn'?t say(?: that)?|i meant(?! to\b))"
-    rf"|{_CORR_LEAD}+(?:i said|i asked(?: for| you)?))\b[ ,.:!-]*(?P<rest>.*)$", re.I)
+    rf"^(?:{_CORR_LEAD}*{_SURE}|{_CORR_LEAD}+(?:i said|i asked(?: for| you(?: for| to)?)?))\b[ ,.:!-]*(?P<rest>.*)$", re.I)
+_SURE_RE = re.compile(rf"^{_CORR_LEAD}*{_SURE}", re.I)
+# "No, I said…" is only a correction when what follows is the corrected request — not a story
+# ("actually I asked Jay to come in at 5, can you text him", "no I said I'd pay him Friday").
+_NOT_A_FIX = re.compile(r"^(?:i|i'?d|i'?m|i'?ll|i'?ve|that|it|he|she|they|we|this|those|earlier|before|yesterday|"
+                        r"already|last|so|you|him|her|them)\b|\?|\b(?:can|could|would) you\b", re.I)
 
 
 def correction(text: str) -> str | None:
@@ -206,6 +211,11 @@ def correction(text: str) -> str | None:
     m = CORRECTION_RE.match(t)
     if not m:
         return None
+    if not _SURE_RE.match(t):  # the "no, I said …" form
+        head = t[:m.start("rest")].lower()
+        rest = m.group("rest").strip(" ,.!-")
+        if rest and (re.search(r"i asked\W*$", head) or _NOT_A_FIX.search(rest) or len(rest.split()) > 12):
+            return None
     for _ in range(3):  # "that's not what I said, I said Thursday" → "Thursday"
         rest = m.group("rest").strip(" ,.!?-")
         m = CORRECTION_RE.match(rest) or re.match(r"^(?:i said|i asked(?: for)?)\b[ ,.:!-]*(?P<rest>.*)$", rest, re.I)
@@ -299,10 +309,15 @@ def match(text: str) -> tuple[str, dict[str, Any]] | None:
             continue
         return "delete_record", {"kind": _kind(m.group("kind")), "item": name}
     m = GOAL_RE.match(t)
-    if m and len(m.group("title").split()) <= 12:
+    if m and len(m.group("title").split()) <= 12 and not _NOT_A_TITLE.search(m.group("title")):
         title = m.group("title").strip(" :-—")
         return "add_goal", {"title": title[:1].upper() + title[1:], "cadence": (m.group("cad") or "daily").lower()}
     m = REMEMBER_RE.match(t)
-    if m:
-        return "remember", {"content": m.group("fact").strip()}
+    if m and not re.match(r"(?:to|when|how|what|where|why|if)\b", m.group("fact"), re.I):
+        return "remember", {"content": m.group("fact").strip()}  # "remember to …" is a reminder → the AI
     return None
+
+
+# "set a goal but I'm not sure what", "make a goal to hit 10k and tell me how to get there"
+_NOT_A_TITLE = re.compile(r"^(?:but|and|so|because|if|or|though)\b|\b(?:and|then) (?:tell|help|show|give) me\b|\?|"
+                          r"\bnot sure\b", re.I)

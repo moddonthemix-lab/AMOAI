@@ -100,6 +100,8 @@ def call(name: str, arguments: dict[str, Any] | str | None) -> str:
             arguments = json.loads(arguments or "{}")
         except json.JSONDecodeError:
             return json.dumps({"error": "arguments were not valid JSON"})
+    if arguments is not None and not isinstance(arguments, dict):
+        return json.dumps({"error": "arguments must be a JSON object"})
     args = {k: _coerce(v, t.params[k][0]) for k, v in (arguments or {}).items()
             if k in t.params and v not in ("", None)}
     missing = [p for p, (_, _, req) in t.params.items() if req and p not in args]
@@ -546,11 +548,12 @@ def delete_record(kind: str, item: str = ""):
 @tool("Delete ALL items of a kind at once, e.g. all goals, all daily goals, all Cravvr tasks. "
       "Only when the user clearly asks for all of them.",
       kind=(_KINDS, "What kind of item.", True),
-      cadence=("enum:daily|weekly|monthly", "Goals only: just this kind of goal.", False))
-def delete_all_records(kind: str, cadence: str | None = None):
+      cadence=("enum:daily|weekly|monthly", "Goals only: just this kind of goal.", False),
+      confirm=("boolean", "True only after the user has confirmed deleting them all.", False))
+def delete_all_records(kind: str, cadence: str | None = None, confirm: bool = False):
     from . import records
 
-    return records.delete_many(kind, get_db(), cadence)
+    return records.delete_many(kind, get_db(), cadence, confirmed=bool(confirm))
 
 
 # ---------------------------------------------------------------- web
@@ -697,9 +700,12 @@ def code_undo():
 def self_repair():
     import threading
 
+    from .config import settings
     from .db import local_now
     from .selfrepair import due, run, status_text
 
+    if not settings.self_repair:
+        return {"text": "Self-repair is switched off (AMO_SELF_REPAIR=0). " + status_text()}
     pending = due(get_db(), local_now())
     if not pending:
         return {"text": status_text()}

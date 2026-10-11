@@ -15,6 +15,7 @@ import json
 import re
 import shutil
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -281,10 +282,21 @@ def apply_pending(db: Database | None = None) -> dict[str, Any]:
                     shutil.copy2(backup / g, root / g)
             raise ValueError(f"the fix broke {f} ({problem}), so I put it back")
     (backup / ".amo-root").write_text(str(root))
+    (backup / ".amo-after.json").write_text(json.dumps(fingerprint(root, p["new"])))
     db.execute("DELETE FROM kv WHERE key = ?", (PENDING,))
     db.set_kv("code_fix_last", str(backup))
     return {"applied": True, "files": list(p["new"]), "text": f"Done — changed {', '.join(p['new'])}. "
                                                               "Say “undo the fix” to put it back."}
+
+
+def recent_fix(db: Database | None = None, minutes: float = 30) -> bool:
+    """A code fix of mine was applied in the last half hour."""
+    last = (db or get_db()).get_kv("code_fix_last")
+    try:
+        when = datetime.strptime(Path(last).name, "%Y%m%d-%H%M%S")
+    except (TypeError, ValueError):
+        return False
+    return when > local_now().replace(tzinfo=None) - timedelta(minutes=minutes)
 
 
 def undo_last_fix(db: Database | None = None) -> dict[str, Any]:
@@ -294,9 +306,17 @@ def undo_last_fix(db: Database | None = None) -> dict[str, Any]:
         raise ValueError("there's no code fix of mine to undo")
     backup = Path(last)
     root = Path((backup / ".amo-root").read_text())
+    after = backup / ".amo-after.json"
+    if after.exists():
+        was = json.loads(after.read_text())
+        now = {f: h for f, h in fingerprint(root, [f for f in was if (root / f).exists()]).items()}
+        edited = [f for f in was if now.get(f) != was[f]]
+        if edited:
+            raise ValueError(f"you've changed {', '.join(edited)} since my fix, so I didn't put the old version "
+                             "back (that would wipe your edits)")
     restored = []
     for f in backup.rglob("*"):
-        if f.is_file() and f.name != ".amo-root":
+        if f.is_file() and f.name not in (".amo-root", ".amo-after.json"):
             rel = f.relative_to(backup)
             shutil.copy2(f, root / rel)
             restored.append(str(rel))
@@ -325,8 +345,11 @@ EXPLAIN_RE = re.compile(r"^(?:(?:hey )?amo[ ,]*)?(?:can you |please )?(?:explain
 
 
 SELF_FIX_RE = re.compile(r"^(?:(?:hey )?amo[ ,]*)?(?:can you |please )?(?:fix|check|heal|repair|debug) (?:yourself|your (?:own )?"
-                         r"(?:code|bugs|errors))|^(?:any|do you have any|what) (?:bugs|errors)(?: have you (?:had|hit))?",
-                         re.I)
+                         r"(?:code|bugs|errors))\b"
+                         r"|^(?:(?:do|did) you (?:have|hit|get)|have you (?:had|hit|got)) any (?:bugs|errors)"
+                         r"(?: lately| today| recently| in your (?:own )?code)?[?.!]*$"
+                         r"|^(?:what|any) (?:bugs|errors) (?:have you (?:had|hit)|in your (?:own )?code)"
+                         r"(?: lately| today| recently)?[?.!]*$", re.I)
 ROLLBACK_RE = re.compile(r"^(?:(?:hey )?amo[ ,]*)?(?:roll ?back|undo|revert) (?:your )?(?:last |latest )?"
                          r"(?:self[- ]?)?(?:fix|repair) (?:to|of|on) yourself|^(?:(?:hey )?amo[ ,]*)?(?:roll ?back|undo|revert) "
                          r"your (?:last |latest )?(?:self[- ]?)?(?:fix|repair|update)", re.I)
@@ -345,9 +368,11 @@ def match(text: str) -> tuple[str, dict[str, Any]] | None:
         return "self_rollback", {}
     if SELF_FIX_RE.match(t):
         return "self_repair", {}
-    if APPLY_RE.match(t):
+    # "make the change" / "undo that edit" are about code only while a code fix is waiting / just happened
+    loose = not re.search(r"\b(?:fix|code)\b", t, re.I)
+    if APPLY_RE.match(t) and not (loose and not get_db().get_kv(PENDING)):
         return "code_apply", {}
-    if UNDO_FIX_RE.match(t):
+    if UNDO_FIX_RE.match(t) and not (loose and not recent_fix()):
         return "code_undo", {}
     m = FIX_RE.match(t)
     if m and _PATH.fullmatch(m.group("path").rstrip(".,")):

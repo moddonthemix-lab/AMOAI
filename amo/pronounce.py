@@ -19,8 +19,13 @@ PATTERNS = [
                        r"(?:it'?s|say it) (?:pronounced )?(?:like )?(?P<say>.+)$", re.I),
     re.compile(_LEAD + r"(?:it'?s|its|that'?s) (?:pronounced|said) (?:like )?(?P<say>.+)$", re.I),
     re.compile(_LEAD + r"(?P<word>[\w'’ -]{2,40}?) is (?:pronounced|said) (?:like )?(?P<say>.+)$", re.I),
-    re.compile(_LEAD + r"(?:say|pronounce) (?P<word>[\w'’ -]{2,40}?) (?:like|as) (?P<say>.+)$", re.I),
+    re.compile(_LEAD + r"pronounce (?P<word>[\w'’ -]{2,40}?) (?:like|as) (?P<say>.+)$", re.I),
+    # "say Nguyen like win" — only for a name (capitalised, one to three words), not "say it like you mean it"
+    re.compile("^(?i:" + _LEAD[1:] + r"say) (?P<word>[A-Z][\w'’-]+(?: [A-Z][\w'’-]+){0,2}) (?i:like|as) (?P<say>.+)$"),
 ]
+# never teach a pronunciation for these — "say it like you mean it" would rewrite every reply
+_COMMON = {"it", "that", "this", "hi", "hello", "yes", "no", "them", "him", "her", "me", "you", "so", "the", "a", "an",
+           "and", "is", "i", "my", "your", "something", "anything", "everything", "thanks", "thank you", "bye"}
 _cache: dict[str, Any] = {"at": 0.0, "rules": []}
 
 
@@ -51,6 +56,8 @@ def match(text: str, last_reply: str = "") -> tuple[str, dict[str, Any]] | None:
             continue
         say = m.group("say").strip(" \"'“”")
         word = (m.groupdict().get("word") or "").strip(" \"'“”") or guess_word(say, last_reply)
+        if word and (word.lower() in _COMMON or word.split()[0].lower() in _COMMON):
+            return None
         if not word:
             return "set_pronunciation", {"word": "", "say": say}
         return "set_pronunciation", {"word": word, "say": say}

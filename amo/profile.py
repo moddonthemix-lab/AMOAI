@@ -17,7 +17,8 @@ from .db import Database, get_db, local_now
 # "from now on, …" / "going forward …" / "I prefer short answers" / "always call me Modd"
 PREF_RE = re.compile(
     r"^(?:(?:hey )?amo[ ,]*)?(?:ok(?:ay)?[ ,]+)?(?:from now on|going forward|in the future|moving forward)[ ,:-]+(?P<pref>.{3,})$"
-    r"|^(?:(?:hey )?amo[ ,]*)?i (?:like|prefer|want) (?P<pref2>(?:my |your )?(?:answers?|replies|responses|you to|it when you)\b.{3,})$"
+    r"|^(?:(?:hey )?amo[ ,]*)?i (?:like|prefer|want) (?P<pref2>(?:my |your )?(?:(?:short|shorter|long|longer|quick|brief|detailed|simple) )?(?:answers?|replies|responses|it when you)\b.*"
+    r"|you to (?:answer|reply|respond|talk|speak|be|keep|explain|call me|use|stop|always|never)\b.{2,})$"
     r"|^(?:(?:hey )?amo[ ,]*)?(?P<pref3>(?:always|never|please always|please never|don'?t ever) "
     r"(?:call me|answer|reply|talk|speak|say|give me|tell me|curse|swear|explain|start|end|mention|read)\b.{2,})$",
     re.I)
@@ -39,6 +40,8 @@ def match(text: str) -> tuple[str, dict[str, Any]] | None:
     m = PREF_RE.match(t)
     if m:
         pref = (m.group("pref") or m.group("pref2") or m.group("pref3")).strip(" ,.")
+        if re.search(r"\b(?:is|are|=)\s+\$?\d|\b(?:rate|price|phone|email|address|balance)\b", pref, re.I):
+            return None  # "from now on Jay's rate is 60" — a fact to save, not how to answer → the AI
         return "set_preference", {"preference": pref[:1].lower() + pref[1:]}
     for rx, pref in FEEDBACK:
         if rx.match(text.strip()):

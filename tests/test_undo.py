@@ -59,3 +59,44 @@ def test_you_misheard_me(db, llm):
     out = a.chat([{"role": "user", "content": "you misheard me"}])
     assert _goals(db) == [] and out["content"].endswith("Sorry — what did you say?")
     assert Agent(db).chat([{"role": "user", "content": "you misheard me"}])["content"] == "Sorry — what did you say?"
+
+
+def test_a_story_is_not_a_correction(db, llm):
+    assert correction("Actually I asked Jay to come in at 5, can you text him") is None
+    assert correction("No I said I'd pay him Friday") is None
+    assert correction("Wait, I said that to Marcus already") is None
+    assert correction("Sorry I asked you earlier about my rate") is None
+    a = Agent(db)
+    a.chat([{"role": "user", "content": "add a daily goal: make one beat"}])
+    llm.script({"role": "assistant", "content": "Want me to draft it?"})
+    a.chat([{"role": "user", "content": "Actually I asked Jay to come in at 5, can you text him"}])
+    assert _goals(db) == ["Make one beat"]  # nothing undone
+
+
+def test_a_corrected_timer_is_set_from_what_you_meant(db, llm):
+    a = Agent(db)
+    a.chat([{"role": "user", "content": "remind me at 4 to call Jay"}])
+    out = a.chat([{"role": "user", "content": "remind me at 4 to call Jay"},
+                  {"role": "assistant", "content": "Okay."},
+                  {"role": "user", "content": "No, I said remind me at 5 to call Jay"}])["content"]
+    rows = db.all("SELECT message, status FROM timers ORDER BY id")
+    assert [r["status"] for r in rows] == ["cancelled", "active"] and rows[1]["message"] == "call Jay"
+    assert out.startswith("Undid that") and llm.calls == []
+
+
+def test_undoing_a_remember_brings_back_the_old_fact(db, llm):
+    a = Agent(db)
+    a.chat([{"role": "user", "content": "remember that Jay's rate is $50 an hour"}])
+    a.chat([{"role": "user", "content": "remember that Jay's rate is $60 an hour"}])
+    rows = db.all("SELECT content, archived FROM memories ORDER BY id")
+    assert [r["archived"] for r in rows] == [1, 0]  # the new fact replaced the old one
+    a.chat([{"role": "user", "content": "undo that"}])
+    assert db.all("SELECT content FROM memories WHERE archived = 0") == [{"content": "Jay's rate is $50 an hour"}]
+
+
+def test_shortcut_results_are_not_second_guessed(db, llm):
+    from amo import timers
+
+    timers.start_timer(10, label="pasta", db=db)
+    out = Agent(db).chat([{"role": "user", "content": "cancel the pasta timer"}])["content"]
+    assert out == "Cancelled the pasta timer." and llm.calls == []

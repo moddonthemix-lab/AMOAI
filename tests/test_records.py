@@ -98,8 +98,15 @@ def test_spoken_goal_deletes(db, llm, said):
 def test_delete_all_and_by_cadence(db, llm):
     for t, c in (("Make one beat", "daily"), ("Drink water", "daily"), ("Post a reel", "weekly")):
         records.create("goals", {"title": t, "cadence": c}, db)
-    out = Agent(db).chat([{"role": "user", "content": "Delete my daily goals."}])
+    a = Agent(db)
+    out = a.chat([{"role": "user", "content": "Delete my daily goals."}])
+    assert out["content"].startswith("That deletes all 2 daily goals: Make one beat, Drink water. Sure?")
+    assert len(records.list_records("goals", db=db)) == 3  # nothing gone until you say yes
+    out = a.chat([{"role": "user", "content": "yes, delete them"}])
     assert out["content"] == "Deleted 2 daily goals: Make one beat, Drink water."
+    assert a.chat([{"role": "user", "content": "undo that"}])["content"] == "Undid that: put back 2 daily goals."
+    assert len(records.list_records("goals", db=db)) == 3
+    records.delete_many("goals", db, "daily")
     out = Agent(db).chat([{"role": "user", "content": "clear all my goals"}])
     assert out["content"] == "Deleted 1 goals: Post a reel." or out["content"].startswith("Deleted 1 goal")
     assert records.list_records("goals", db=db) == []
@@ -119,3 +126,18 @@ def test_unnamed_delete_asks_when_several(db, llm):
     from amo.fastpath import match
 
     assert match("delete my goals")[0] == "delete_all_records"
+
+
+def test_delete_never_guesses_and_can_be_undone(db, llm):
+    goal = records.create("goals", {"title": "Make one beat"}, db)
+    jay = records.create("clients", {"name": "Jay Carter"}, db)
+    db.insert("studio_sessions", {"client_id": jay["id"], "starts_at": "2030-01-01T19:00", "hours": 2, "rate": 50,
+                                  "status": "booked", "created_at": "x"})
+    a = Agent(db)
+    out = a.chat([{"role": "user", "content": "delete the goal make two beats"}])["content"]
+    assert "Did you mean “Make one beat”?" in out and records.get("goals", goal["id"], db)
+    assert a.chat([{"role": "user", "content": "delete the client Jay Carter"}])["content"].startswith("Deleted client")
+    assert db.scalar("SELECT COUNT(*) FROM studio_sessions") == 0  # went with the client
+    assert a.chat([{"role": "user", "content": "undo that"}])["content"].startswith("Undid that: put back")
+    assert records.get("clients", jay["id"], db) and db.scalar("SELECT COUNT(*) FROM studio_sessions") == 1
+    assert llm.calls == []

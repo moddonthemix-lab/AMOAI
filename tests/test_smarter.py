@@ -117,3 +117,21 @@ def test_corrections_are_logged_from_chat(db, llm):
          {"role": "assistant", "content": "New daily goal: Make one bet."}])
     row = db.one("SELECT kind, said, meant FROM corrections")
     assert row == {"kind": "misheard", "said": "add a daily goal: make one bet", "meant": "add a daily goal: make one beat"}
+
+
+def test_everyday_sentences_dont_trigger_shortcuts():
+    from amo import coding, fastpath, profile, pronounce
+
+    assert profile.match("I want you to book Jay Friday") is None          # a request, not a preference
+    assert profile.match("from now on Jay's rate is 60") is None           # a fact for the AI to save
+    assert profile.match("I want you to keep answers short")[0] == "set_preference"
+    assert pronounce.match("Say it like you mean it") is None
+    assert pronounce.match("Say hi to Jay like a friend") is None
+    assert pronounce.match("Say Nguyen like win") == ("set_pronunciation", {"word": "Nguyen", "say": "win"})
+    assert fastpath.match("Should I sell my Jordans") is None              # not a ticker
+    assert fastpath.match("should I short SPY at 500")[0] == "check_trade"
+    assert fastpath.match("I want to set a goal but I'm not sure what") is None
+    assert fastpath.match("Remember to text Jay tomorrow") is None         # a reminder, not a fact
+    assert coding.match("any errors in Jay's invoice?") is None
+    assert coding.match("what errors did I make on trades") is None
+    assert coding.match("do you have any errors?") == ("self_repair", {})

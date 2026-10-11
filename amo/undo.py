@@ -28,11 +28,13 @@ CHANGES = {"update_client", "update_session", "complete_session", "list_resale_i
            "delete_all_records", "forget", "watchlist_remove"}
 
 UNDO_RE = re.compile(r"^(?:(?:hey )?amo[ ,]*)?(?:please )?(?:undo(?: that| it| the last (?:one|thing))?|"
+                     r"undo (?:that|the|your|my) (?:last )?(?:change|edit)|revert (?:that|the) (?:change|edit)|"
                      r"take (?:that|it) back|scratch that|revert that)[ .!]*(?:please)?[ .!]*$", re.I)
 
 
 def record_turn(trace: list[dict[str, Any]], db: Database | None = None) -> None:
-    """Remember what this turn created. Turns that saved nothing leave the last record alone."""
+    """Remember what this turn created (or deleted, so it can be put back). Turns that saved nothing
+    leave the last record alone."""
     made, changed = [], []
     for t in trace:
         r = t.get("result")
@@ -49,9 +51,12 @@ def record_turn(trace: list[dict[str, Any]], db: Database | None = None) -> None
             made.append({"watch": r["added"]})
         elif t["name"] == "text_client" and r.get("drafted"):
             made.append({"text": r.get("client")})
+        elif t["name"] in ("delete_record", "delete_all_records") and (r.get("deleted") is True or r.get("deleted", 0) > 0):
+            what = r.get("name") or f"{r.get('deleted')} {r.get('what', 'items')}"
+            made.append({"restore": True, "what": what})
         elif t["name"] in CHANGES:
             changed.append(t["name"])
-    if made or changed:
+    if made or changed:  # a lookup in between ("read my last note") doesn't stop "undo that"
         (db or get_db()).set_kv(KEY, json.dumps({"made": made, "changed": changed,
                                                  "at": local_now().isoformat()}))
 
@@ -82,9 +87,16 @@ def undo_recent(db: Database | None = None, within_minutes: float = 3) -> str | 
             elif "text" in m:
                 if cancel_text(db)["cancelled"]:
                     done.append(f"cancelled the text to {m['text']}")
+            elif "restore" in m:
+                if records.restore_deleted(db):
+                    done.append(f"put back {m['what']}")
             else:
                 gone = records.delete(m["kind"], m["id"], db)
                 done.append(f"removed the {gone['label']} {gone['name']}")
+                if m["kind"] == "memories":  # a fact it replaced comes back
+                    db.execute("UPDATE memories SET archived = 0, superseded_by = NULL WHERE superseded_by = ?",
+                               (m["id"],))
+                    db.execute("DELETE FROM kv WHERE key = ?", (records.DELETED_KEY,))
         except ValueError:
             continue  # already gone (deleted by hand)
     db.execute("DELETE FROM kv WHERE key = ?", (KEY,))

@@ -42,15 +42,6 @@ _TRIGGER_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Digits take any unit ("5m", "30 secs"); word numbers need a whole unit word,
-# or "set an alarm for 7am" reads "am" as "a" + "m" = one minute.
-_DURATION_RE = re.compile(
-    r"\b(?:(?P<qty>\d+(?:\.\d+)?)\s*(?P<unit>seconds?|secs?|minutes?|mins?|hours?|hrs?|[smh])"
-    r"|(?P<wqty>" + "|".join(sorted(_WORD_NUMBERS, key=len, reverse=True)) + r")"
-    r"\s+(?P<wunit>seconds?|secs?|minutes?|mins?|hours?|hrs?))\b",
-    re.IGNORECASE,
-)
-
 # The bit after "to …" / "for …" that says what the reminder is about.
 _SUBJECT_RE = re.compile(
     r"\bto\s+(?P<subject>.+?)\s*$|\babout\s+(?P<subject2>.+?)\s*$",
@@ -65,6 +56,50 @@ def _qty_to_float(raw: str) -> float:
         return float(_WORD_NUMBERS[raw.lower()])
 
 
+_UNIT = r"(?:seconds?|secs?|minutes?|mins?|hours?|hrs?)"
+_NUM = r"(?:\d+(?:\.\d+)?|" + "|".join(sorted((w for w in _WORD_NUMBERS if w != "half"), key=len, reverse=True)) + r")"
+# One piece of a duration: "10 minutes", "5m", "half an hour", "2 and a half hours", "a minute and a half".
+_PIECE_RE = re.compile(
+    r"\b(?:half\s+(?:an?\s+)?(?P<hu>hour|minute|second)"
+    r"|(?P<q>" + _NUM + r")(?P<h1>\s+and\s+a\s+half)?\s*(?P<u>" + _UNIT + r"|(?<=\d)[smh]|(?<=\d\s)[smh])"
+    r"(?P<h2>\s+and\s+a\s+half)?)\b",
+    re.IGNORECASE)
+_JOIN_RE = re.compile(r"^(?:\s*,?\s*(?:and\s+)?)$", re.I)
+# A duration counts for a timer only after "in"/"for" ("remind me in 10 minutes", "timer for 2 hours"),
+# right after "timer", before "timer"/"from now" — so "the 3 hour mix session" is never a timer.
+_BEFORE_OK = re.compile(r"(?:\bin|\bfor|\btimer|\balarm|\bcountdown|\bset(?: me)?|\bstart)(?:\s+(?:another|about|around|like|just))?\s*$", re.I)
+_AFTER_OK = re.compile(r"^\s*(?:-?\s*(?:long\s+)?timer|from now|countdown)\b|^\s*[.!?]*$", re.I)
+
+
+def _piece_minutes(m: re.Match) -> float:
+    if m.group("hu"):
+        return 0.5 * _UNIT_TO_MINUTES[m.group("hu").lower()]
+    q = _qty_to_float(m.group("q"))
+    if m.group("h1") or m.group("h2"):
+        q += 0.5
+    return q * _UNIT_TO_MINUTES[m.group("u").lower()]
+
+
+def find_duration(text: str):
+    """(minutes, start, end, how) for the first duration in `text`, where pieces next to each other add up
+    ("1 hour 30 minutes", "1 hour and 15 minutes"). `how` is "in", "for" or "" — the word before it."""
+    pieces = list(_PIECE_RE.finditer(text or ""))
+    i = 0
+    while i < len(pieces):
+        start, end, minutes = pieces[i].start(), pieces[i].end(), _piece_minutes(pieces[i])
+        j = i + 1
+        while j < len(pieces) and _JOIN_RE.match(text[end:pieces[j].start()]):
+            minutes += _piece_minutes(pieces[j])
+            end = pieces[j].end()
+            j += 1
+        before, after = text[:start], text[end:]
+        if _BEFORE_OK.search(before) or _AFTER_OK.match(after):
+            how = re.search(r"(\w+)(?:\s+(?:another|about|around|like|just))?\s*$", before)
+            return minutes, start, end, (how.group(1).lower() if how else "")
+        i = j
+    return None
+
+
 def parse_timer_request(text: str):
     """Return {"minutes": float, "message": str} if `text` asks for a timer, else None.
 
@@ -74,20 +109,17 @@ def parse_timer_request(text: str):
     if not text or not _TRIGGER_RE.search(text):
         return None
 
-    duration = _DURATION_RE.search(text)
-    if not duration:
+    found = find_duration(text)
+    if not found:
         return None
-
-    qty = duration.group("qty") or duration.group("wqty")
-    unit = duration.group("unit") or duration.group("wunit")
-    minutes = _qty_to_float(qty) * _UNIT_TO_MINUTES[unit.lower()]
+    minutes, _, dur_end, _ = found
     if minutes <= 0:
         return None
     minutes = max(MIN_MINUTES, min(MAX_MINUTES, minutes))
 
     # Reminder subject: prefer text after the duration ("...in 5 minutes to stir the soup"),
     # falling back to the whole utterance so we never invent an unrelated message.
-    tail = text[duration.end():]
+    tail = text[dur_end:]
     subject_match = _SUBJECT_RE.search(tail) or _SUBJECT_RE.search(text)
     message = "Timer is up!"
     if subject_match:
@@ -95,7 +127,7 @@ def parse_timer_request(text: str):
         if subject:
             subject = subject.strip().rstrip("?.!").strip()
             # Guard against the model's placeholder and against swallowing the duration.
-            if subject and subject not in {"...", "…"} and not _DURATION_RE.fullmatch(subject):
+            if subject and subject not in {"...", "…"} and not _PIECE_RE.fullmatch(subject):
                 message = subject[0].upper() + subject[1:] + "!"
 
     name = timer_name(text)
@@ -168,6 +200,15 @@ _DAY_RE = re.compile(
 _PART_HOURS = {"morning": 9, "afternoon": 15, "evening": 18, "night": 20}
 
 
+def _real_clock(text: str, c: re.Match) -> bool:
+    """"for 2" is a time only as "an alarm for 7" or with am/pm, a colon or o'clock — not "pay Jay for 2 sessions"."""
+    if c.group("word") or not c.group(0).lower().startswith("for"):
+        return True
+    if c.group("m") or c.group("ampm"):
+        return True
+    return bool(re.search(r"\b(?:alarm|reminder|remind me)\s*$", text[:c.start()], re.I))
+
+
 def _to_hour(raw: str) -> int:
     return int(raw) if raw.isdigit() else _HOUR_WORDS[raw.lower()]
 
@@ -180,10 +221,11 @@ def parse_reminder_request(text: str, now: _dt.datetime = None):
     means 9 p.m.; "tonight"/"evening" mean p.m.).  Limited to 30 days ahead."""
     if not text or not _REMINDER_TRIGGER_RE.search(text):
         return None
-    if _DURATION_RE.search(text) and re.search(r"\bin\s+(?:an?\s+|\d|" + "|".join(_WORD_NUMBERS) + ")", text, re.I):
+    found = find_duration(text)
+    if found and found[3] == "in":
         return None                                   # "in 10 minutes": a timer
     now = now or _dt.datetime.now()
-    clock = _CLOCK_RE.search(text)
+    clock = next((c for c in _CLOCK_RE.finditer(text) if _real_clock(text, c)), None)
     day = _DAY_RE.search(text)
     if not clock and not day:
         return None
@@ -312,7 +354,7 @@ _CANCEL_RE = re.compile(
     r"^(?:please\s+)?(?:cancel|delete|remove|stop|clear|turn off|never mind|forget)\s+(?P<rest>.+)$", re.I)
 _LEFT_RE = re.compile(
     r"^how (?:long|much time)(?: is)?(?: (?:is )?left)?(?: on| for)?(?P<rest>.*?)(?: left)?$"
-    r"|^when (?:is|does|will)(?P<rest2>.+?)(?: go off| due| finish| done| ring)?$", re.I)
+    r"|^when (?:is|does|will)(?P<rest2>.+?)(?: go(?:ing)? off| due| finish| done| ring)?$", re.I)
 
 
 def _clean(text):
@@ -346,6 +388,7 @@ def parse_reminder_query(text: str):
 def _target(rest):
     """The words that pick a timer/reminder: 'the pasta timer' -> 'pasta',
     'my reminder about the bins' -> 'bins'; None when it's just 'the timer'."""
+    rest = re.sub(r"'s\b", "", rest)
     words = re.sub(rf"\b(?:the|my|a|an|all|every|that|this|of|about|to|for|on|{_KIND_WORDS})\b", " ", rest)
     words = re.sub(r"\s+", " ", words).strip()
     return words or None
@@ -534,6 +577,16 @@ def fire_due(db: Database | None = None, now: _dt.datetime | None = None) -> lis
 
 
 # ------------------------------------------------------------------ fast path for the agent
+_FILLER = re.compile(r"\b(?:hey|amo|please|can you|could you|ok(?:ay)?|also|and|then|so|just|now)\b|[,.!]", re.I)
+
+
+def _compound(text: str) -> bool:
+    """Something else is asked before the reminder ("book Jay for Friday at 7 and remind me…")."""
+    m = _TRIGGER_RE.search(text or "")
+    if not m:
+        return False
+    before = text[:m.start()]
+    return bool(re.search(r"\b(?:and|then)\b|,", before, re.I)) and len(_FILLER.sub(" ", before).split()) >= 3
 def match(text: str, now: _dt.datetime | None = None) -> tuple[str, dict[str, Any]] | None:
     """(tool, args) when `text` is clearly a timer/reminder request or question, else None."""
     now = now or local_now()
@@ -544,6 +597,8 @@ def match(text: str, now: _dt.datetime | None = None) -> tuple[str, dict[str, An
         if q["action"] == "cancel":
             return "cancel_timer", {"target": q["target"] or "", "all": q["all"]}
         return "timer_left", {"target": q["target"] or ""}
+    if _compound(text):
+        return None  # "book Jay Friday at 7 and remind me to text him" — more than a reminder
     t = parse_timer_request(text)
     if t:
         return "set_timer", {"minutes": t["minutes"], "label": t.get("name") or "", "message": _subject(t["message"])}

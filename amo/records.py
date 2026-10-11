@@ -307,7 +307,7 @@ def _name_of(ent: Entity, row: dict[str, Any]) -> str:
     return " ".join(str(row.get(k) or "") for k in ent.name_fields + ("client_name",))
 
 
-def resolve(kind: str, item: int | str | None, db: Database | None = None) -> dict[str, Any]:
+def resolve(kind: str, item: int | str | None, db: Database | None = None, fuzzy: bool = True) -> dict[str, Any]:
     """Find one item by id or (part of) its name. Forgiving about punctuation, "one" vs "1",
     and close wording. Empty → the only item if there's just one; "the one I just added" → newest.
     Raises if missing or ambiguous (listing the choices)."""
@@ -353,27 +353,101 @@ def resolve(kind: str, item: int | str | None, db: Database | None = None) -> di
         best = scored[0]
         runner = scored[1][0] if len(scored) > 1 else 0
         if best[0] >= 0.6 and best[0] - runner >= 0.15:
+            if not fuzzy:  # deleting: "make two beats" must never delete "Make one beat" — ask
+                raise ValueError(f"I couldn't find a {ent.label} called “{ref}”. "
+                                 f"Did you mean “{_describe(ent, best[1])}”?")
             return best[1]
         raise ValueError(f"I couldn't find a {ent.label} matching “{ref}”. You have: {choices}")
     options = "; ".join(f"#{m['id']} {_describe(ent, m)}" for m in matches[:6])
     raise ValueError(f"more than one {ent.label} matches “{ref}”: {options}. Which one?")
 
 
-def delete_many(kind: str, db: Database | None = None, cadence: str | None = None) -> dict[str, Any]:
-    """Delete every item of a kind (goals can be limited to daily/weekly/monthly)."""
+# Rows that go (or lose their link) when a parent row is deleted — kept so "undo" can put them back.
+_CHILDREN = {"clients": [("studio_sessions", "client_id"), ("payments", "client_id")],
+             "studio_sessions": [("payments", "session_id")], "goals": [("goal_checkins", "goal_id")]}
+DELETED_KEY = "last_deleted"
+
+
+def _snapshot(db: Database, table: str, ids: list[int], out: dict[str, list[dict]]) -> None:
+    if not ids:
+        return
+    marks = ",".join("?" * len(ids))
+    out.setdefault(table, []).extend(db.all(f"SELECT * FROM {table} WHERE id IN ({marks})", tuple(ids)))
+    for child, col in _CHILDREN.get(table, []):
+        kids = [r["id"] for r in db.all(f"SELECT id FROM {child} WHERE {col} IN ({marks})", tuple(ids))]
+        _snapshot(db, child, kids, out)
+
+
+def _keep_for_undo(db: Database, ent: Entity, ids: list[int]) -> None:
+    import json
+
+    rows: dict[str, list[dict]] = {}
+    _snapshot(db, ent.table, ids, rows)
+    db.set_kv(DELETED_KEY, json.dumps({"at": now_iso(), "rows": rows}, default=str))
+
+
+def restore_deleted(db: Database | None = None) -> int:
+    """Put back what the last delete removed (and the sessions/payments/check-ins that went with it)."""
+    import json
+
+    db = db or get_db()
+    raw = db.get_kv(DELETED_KEY)
+    if not raw:
+        return 0
+    n = 0
+    with db.tx() as c:
+        for table, rows in json.loads(raw)["rows"].items():  # parents were saved first
+            for r in rows:
+                cols = ",".join(r)
+                c.execute(f"INSERT OR REPLACE INTO {table} ({cols}) VALUES ({','.join('?' * len(r))})", tuple(r.values()))
+                n += 1
+    db.execute("DELETE FROM kv WHERE key = ?", (DELETED_KEY,))
+    return n
+
+
+def confirm_delete_all(text: str, db: Database) -> tuple[str, dict[str, Any]] | None:
+    """"Yes, delete them" right after AMO asked whether to delete them all."""
+    import json
+    import re
+    from datetime import datetime, timedelta
+
+    raw = db.get_kv("delete_all_pending")
+    if not raw or not re.match(r"^(?:yes|yeah|yep|sure|do it|ok(?:ay)?|confirm|delete (?:them|it|all))\b", text.strip(), re.I):
+        return None
+    p = json.loads(raw)
+    db.execute("DELETE FROM kv WHERE key = ?", ("delete_all_pending",))
+    if datetime.fromisoformat(p["at"]) < datetime.fromisoformat(now_iso()) - timedelta(minutes=5):
+        return None
+    args: dict[str, Any] = {"kind": p["kind"], "confirm": True}
+    if p.get("cadence"):
+        args["cadence"] = p["cadence"]
+    return "delete_all_records", args
+
+
+def delete_many(kind: str, db: Database | None = None, cadence: str | None = None,
+                confirmed: bool = True) -> dict[str, Any]:
+    """Delete every item of a kind (goals can be limited to daily/weekly/monthly). With confirmed=False
+    and more than one item, nothing is deleted yet: it asks first."""
     db = db or get_db()
     ent = entity(kind)
     rows = list_records(ent.kind, None, db)
     if cadence and ent.kind == "goals":
         rows = [r for r in rows if r.get("cadence") == cadence]
     names = [_describe(ent, r) for r in rows]
+    what = f"{cadence + ' ' if cadence else ''}{ent.title.lower()}"
+    if not confirmed and len(rows) > 1:
+        import json
+
+        db.set_kv("delete_all_pending", json.dumps({"kind": ent.kind, "cadence": cadence, "at": now_iso()}))
+        return {"confirm": True, "count": len(rows), "what": what, "names": names,
+                "text": f"That deletes all {len(rows)} {what}: {', '.join(names[:8])}. Sure? Say “yes, delete them”."}
+    _keep_for_undo(db, ent, [r["id"] for r in rows])
     for r in rows:
         if ent.soft_delete:
             db.update(ent.table, r["id"], {ent.soft_delete: 1})
         else:
             with db.tx() as c:
                 c.execute(f"DELETE FROM {ent.table} WHERE id = ?", (r["id"],))
-    what = f"{cadence + ' ' if cadence else ''}{ent.title.lower()}"
     return {"deleted": len(rows), "kind": ent.kind, "what": what, "names": names}
 
 
@@ -413,7 +487,8 @@ def delete(kind: str, item: int | str, db: Database | None = None) -> dict[str, 
     """Delete one item. Returns what was deleted (so it can be confirmed or undone by hand)."""
     db = db or get_db()
     ent = entity(kind)
-    target = resolve(ent.kind, item, db)
+    target = resolve(ent.kind, item, db, fuzzy=False)
+    _keep_for_undo(db, ent, [target["id"]])
     if ent.soft_delete:
         db.update(ent.table, target["id"], {ent.soft_delete: 1})
     else:

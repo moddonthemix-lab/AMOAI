@@ -159,7 +159,7 @@ class Agent:
             parts.append(mood.note(m, why))
         if user_text.strip():
             core_ids = {m["id"] for m in self.memory.core(12)}
-            relevant = [m for m in self.memory.search(user_text, limit=settings.memory_context_limit)
+            relevant = [m for m in self.memory.search(user_text, limit=settings.memory_context_limit, touch=False)
                         if m["id"] not in core_ids]
             if relevant:
                 parts.append("Possibly relevant: " + " | ".join(m["content"] for m in relevant))
@@ -244,6 +244,8 @@ class Agent:
         from . import undo
 
         undone = None
+        wrapped = False
+        from .quick_answers import answer as quick_answer
         from .selfreview import log_correction
 
         earlier = [m["content"] for m in history[:-1] if m["role"] == "user" and isinstance(m["content"], str)]
@@ -254,7 +256,10 @@ class Agent:
             last_reply = next((m["content"] for m in reversed(history[:-1])
                                if m["role"] == "assistant" and isinstance(m["content"], str)), "")
             log_correction("wrong", previous_request, "", self.db, reply=last_reply)
-        if user_text and undo.UNDO_RE.match(user_text.strip()):
+        from .coding import recent_fix
+
+        if (user_text and undo.UNDO_RE.match(user_text.strip())
+                and not (re.search(r"\b(?:change|edit)", user_text, re.I) and recent_fix(self.db))):
             content = undo.undo_last(self.db)
             if content.startswith("Undid"):
                 log_correction("undo", previous_request, "", self.db)
@@ -276,7 +281,8 @@ class Agent:
                     on_text(content)
                 self._log(channel, user_text, content)
                 return {"content": content, "tool_calls": []}
-            if not fastpath.match(meant):
+            if not (self._shortcut(meant, "") or quick_answer(meant, now=local_now())):
+                wrapped = True  # the AI redoes it — the shortcuts below must not read this wrapper
                 meant = (f"Correction to what I asked before: {meant}. "
                          + ("You already undid the earlier save, so do my previous request again with this change."
                             if undone else "Answer or redo my previous request with this change."))
@@ -286,12 +292,17 @@ class Agent:
             if on_text and undone:
                 on_text(undone + " ")
 
-        convo: list[dict[str, Any]] = [
-            {"role": "system", "content": self.build_system_prompt(user_text, channel)},
-            *history,
-        ]
-        if user_text and convo[-1].get("role") == "user" and isinstance(convo[-1].get("content"), str):
-            convo[-1] = {**convo[-1], "content": self.turn_note(user_text) + convo[-1]["content"]}
+        def build() -> list[dict[str, Any]]:
+            """The prompt — only built when the AI is actually needed (memory search, documents, mood)."""
+            c: list[dict[str, Any]] = [
+                {"role": "system", "content": self.build_system_prompt(user_text, channel)},
+                *history,
+            ]
+            if user_text and c[-1].get("role") == "user" and isinstance(c[-1].get("content"), str):
+                c[-1] = {**c[-1], "content": self.turn_note(user_text) + c[-1]["content"]}
+            return c
+
+        convo: list[dict[str, Any]] = []
         llm = get_llm()
         recent_user = " ".join(
             m["content"] for m in history[-6:] if m["role"] == "user" and isinstance(m["content"], str)
@@ -305,10 +316,8 @@ class Agent:
         self._final_streamed = False
         content = ""
         fast = None
-        if user_text:
+        if user_text and not wrapped:
             from .integrations import pending_text
-            from .quick_answers import answer as quick_answer
-            from .timers import match as timer_match
 
             quick = quick_answer(user_text, now=local_now())  # time, date, math, units, countdowns
             if quick:
@@ -317,28 +326,20 @@ class Agent:
                 self._log(channel, user_text, quick)
                 return {"content": quick, "tool_calls": []}
             fast = fastpath.text_reply(user_text, pending_text(self.db) is not None)
+            last_reply = next((m["content"] for m in reversed(history[:-1])
+                               if m["role"] == "assistant" and isinstance(m["content"], str)), "")
             if not fast:  # "yes" / "skip" to something you asked the pocket pet while it was offline
                 from . import pocket
 
-                if pocket.pending(self.db) and (pocket.YES_RE.match(user_text.strip())
-                                                or pocket.NO_RE.match(user_text.strip())):
+                # …unless "yes" answers a different question AMO just asked ("want me to text Jay?")
+                other_question = last_reply.rstrip().endswith("?") and "want me to do it?" not in last_reply
+                if pocket.pending(self.db) and not other_question and (pocket.YES_RE.match(user_text.strip())
+                                                                       or pocket.NO_RE.match(user_text.strip())):
                     return self._offline_answer(user_text, channel, on_text)
-            if not fast and not fastpath.TEXT_RE.match(user_text.strip()):
-                from .profile import match as preference_match
+            if not fast:
+                from .records import confirm_delete_all
 
-                from .pronounce import match as pronounce_match
-
-                last_reply = next((m["content"] for m in reversed(history[:-1])
-                                   if m["role"] == "assistant" and isinstance(m["content"], str)), "")
-                from .notes import match as notes_match
-
-                from .coding import match as code_match
-                from .knowledge import match as knowledge_match
-
-                fast = (timer_match(user_text, local_now()) or pronounce_match(user_text, last_reply)
-                        or preference_match(user_text) or notes_match(user_text) or code_match(user_text)
-                        or knowledge_match(user_text))
-            fast = fast or fastpath.match(user_text)
+                fast = confirm_delete_all(user_text, self.db) or self._shortcut(user_text, last_reply)
         if fast:
             name, args = fast
             result = json.loads(self._call_tool(name, args))
@@ -352,6 +353,7 @@ class Agent:
             elif name == "search_knowledge":
                 if result.get("hits"):  # let the model answer from your files
                     note = " | ".join(f"From your file “{h['file']}”: {h['text'][:700]}" for h in result["hits"])
+                    convo = build()
                     convo[-1] = {**convo[-1], "content": f"({note})\n\n" + convo[-1]["content"]}
                     trace.append({"name": name, "arguments": args, "result": result})
                 else:
@@ -398,11 +400,14 @@ class Agent:
                     content = code_answer(user_text, voice=channel == "voice", history=history[:-1])
                 except LLMError as e:
                     content = (f"{e} Run: amo setup-coder" if "isn't downloaded" in str(e) else str(e))
+        answered_by_model = not content
         if not content:  # no shortcut, or it failed: let the model handle it
+            convo = convo or build()
             content = self._tool_loop(llm, convo, schemas, model, trace)
 
         # 2) The model claimed it saved something but never called a tool → make it actually do it.
-        if user_text and not _saved_anything(trace) and kind_of(user_text) == "action" and _CLAIM.search(content):
+        if (answered_by_model and user_text and not _saved_anything(trace) and kind_of(user_text) == "action"
+                and _CLAIM.search(content)):
             log.warning("model claimed an action without a tool call; retrying: %r", content[:120])
             convo += [
                 {"role": "assistant", "content": content},
@@ -425,6 +430,21 @@ class Agent:
         if learn:
             threading.Thread(target=self._learn_safely, daemon=True).start()
         return {"content": content, "tool_calls": trace}
+
+    def _shortcut(self, text: str, last_reply: str) -> tuple[str, dict[str, Any]] | None:
+        """Requests handled directly, without the AI: timers, pronunciations, preferences, notes, code
+        commands, your documents, then the common actions in fastpath."""
+        from .coding import match as code_match
+        from .knowledge import match as knowledge_match
+        from .notes import match as notes_match
+        from .profile import match as preference_match
+        from .pronounce import match as pronounce_match
+        from .timers import match as timer_match
+
+        if fastpath.TEXT_RE.match(text.strip()):
+            return fastpath.match(text)
+        return (timer_match(text, local_now()) or pronounce_match(text, last_reply) or preference_match(text)
+                or notes_match(text) or code_match(text) or knowledge_match(text) or fastpath.match(text))
 
     def _offline_answer(self, user_text: str, channel: str, on_text: Callable[[str], None] | None) -> dict[str, Any]:
         from . import pocket
