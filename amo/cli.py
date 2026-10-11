@@ -172,7 +172,7 @@ def cmd_mic_test(_a):
     print("GO — speak now")
     audio = sd.rec(int(5 * 16000), samplerate=16000, channels=1, dtype="float32")
     sd.wait()
-    level = float(np.sqrt(np.mean(audio**2)))
+    audio = audio[:, 0]
     peak = float(np.max(np.abs(audio))) if len(audio) else 0.0
     bar = "█" * min(30, int(peak * 60))
     print(f"   level {bar or '(nothing)'}")

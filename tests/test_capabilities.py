@@ -1,7 +1,6 @@
 """Long-term recall, eyes (vision) and hands (hardware) — the capabilities AMO's body will use."""
 
 import threading
-import time
 
 import pytest
 

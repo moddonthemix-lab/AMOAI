@@ -1,4 +1,3 @@
-import threading
 import time
 
 from amo.voice.speaker import SentenceSpeaker, split_ready

@@ -1,7 +1,6 @@
 import sqlite3
 from datetime import datetime
 
-import pytest
 
 from amo import integrations
 from amo.agent import Agent

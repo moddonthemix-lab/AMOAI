@@ -1,6 +1,5 @@
 """The morning brief: templates only, prepared ahead, severe weather first."""
 
-import json
 from datetime import datetime, timedelta
 
 from amo import briefing

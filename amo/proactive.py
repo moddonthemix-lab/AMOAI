@@ -93,7 +93,7 @@ def _always_open(symbol: str) -> bool:
 def strat_watch(db: Database, now: datetime, force: bool = False) -> int:
     """Check the watchlist; announce new triggers and new A-grade setups (with continuity)."""
     from . import strat
-    from .strat import TF_NAMES, _fmt_factory, risk_reward
+    from .strat import TF_NAMES, _fmt_factory
 
     rows = db.all("SELECT symbol FROM watchlist WHERE alerts = 1")
     if not rows:
