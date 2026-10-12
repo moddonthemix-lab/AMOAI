@@ -532,6 +532,50 @@ def cmd_brain(a):
         print("\nSet it from your eval results:  amo brain --auto   (or --chat / --lookup / --action MODEL, --off)")
 
 
+def cmd_printer(a):
+    """Show printers (and ink), choose one, or print a test page."""
+    from . import printer as prn
+
+    try:
+        if a.use:
+            name = prn.pick(a.use)
+            _set_env("AMO_PRINTER", name)
+            print(f"AMO will print on {name.replace('_', ' ')}.")
+            _restart_server()
+            return
+        ps = prn.printers()
+        if not ps:
+            print("No printer yet. On the Mac: System Settings → Printers & Scanners → Add Printer… → pick your HP\n"
+                  "(it appears by itself when it's on the same Wi-Fi). Then run: amo printer --test")
+            return
+        for p in ps:
+            print(f"  {'★' if p['default'] else ' '} {p['name'].replace('_', ' '):<30} {p['status'][:50]}")
+        print(f"\nAMO prints on: {prn.pick().replace('_', ' ')}   (change: amo printer --use NAME)")
+        print(prn.ink()["text"])
+        if a.test:
+            stamp = prn.local_now()
+            r = prn.print_text(f"Hi {settings.owner_name} — this is {settings.assistant_name}.\n\n"
+                               "If you can read this, I can print for you now: say “print my schedule”, "
+                               "“print Jay's invoice” or “print that”.", "Test page")
+            print(r["text"], f"({stamp:%H:%M})")
+    except ValueError as e:
+        print(e)
+        sys.exit(1)
+
+
+def cmd_print(a):
+    from . import printer as prn
+
+    try:
+        path = prn.find_file(a.file)
+        if not path:
+            raise ValueError(f"can't find {a.file}")
+        print(prn.print_file(path, a.printer, a.copies, a.two_sided)["text"])
+    except ValueError as e:
+        print(e)
+        sys.exit(1)
+
+
 def _installed_models() -> list[str] | None:
     from .llm import get_llm
 
@@ -875,6 +919,17 @@ def main(argv: list[str] | None = None) -> None:
     u.add_argument("--fast", action="store_true", help="set the background (learning) model instead")
     u.add_argument("--skip-pull", action="store_true", help="don't download, just switch")
     u.set_defaults(fn=cmd_use)
+
+    pr = sub.add_parser("printer", help="show printers and ink, pick one, or print a test page")
+    pr.add_argument("--test", action="store_true", help="print a test page")
+    pr.add_argument("--use", help="the printer AMO should use (part of its name)")
+    pr.set_defaults(fn=cmd_printer)
+    pf = sub.add_parser("print", help="print a file")
+    pf.add_argument("file")
+    pf.add_argument("--copies", type=int, default=1)
+    pf.add_argument("--two-sided", action="store_true")
+    pf.add_argument("--printer")
+    pf.set_defaults(fn=cmd_print)
 
     br = sub.add_parser("brain", help="two-tier brain: which model answers chat, lookups and actions")
     br.add_argument("--auto", action="store_true", help="pick from your last `amo eval --models …` run")

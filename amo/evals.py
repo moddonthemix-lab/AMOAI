@@ -153,9 +153,10 @@ def _copy_of(live: Database) -> tuple[Database, Path]:
 @contextmanager
 def _sandbox(model: str | None):
     """No phone pushes, no learning in the background, the requested model, and the real DB restored after."""
-    saved = {k: getattr(settings, k) for k in ("ntfy_url", "auto_learn", "chat_model", "self_repair")}
+    saved = {k: getattr(settings, k) for k in ("ntfy_url", "auto_learn", "chat_model", "self_repair", "print_dry_run")}
     real_db = get_db()
     settings.ntfy_url, settings.auto_learn, settings.self_repair = "", False, False
+    settings.print_dry_run = True  # a test run never uses real paper
     if model:
         settings.chat_model = model
     try:

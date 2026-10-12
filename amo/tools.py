@@ -730,6 +730,48 @@ def self_rollback():
     return rollback()
 
 
+# ---------------------------------------------------------------- printer
+@tool("Print on the user's printer: something AMO keeps (what=schedule today|schedule tomorrow|goals|brief|notes|"
+      "unpaid_sessions|resale_inventory|open_positions|trading_rules|cravvr_tasks, or invoice:<client>), a file by "
+      "name, or text you write (a list, a letter, lyrics…).",
+      what=("string", "What to print (see above).", False),
+      file=("string", "A file name or path (Desktop, Documents, Downloads, knowledge folder).", False),
+      text=("string", "Text to print, when printing something you wrote.", False),
+      title=("string", "Heading for printed text.", False),
+      copies=("integer", "Default 1.", False),
+      two_sided=("boolean", "", False),
+      printer=("string", "Only if the user named a printer.", False))
+def print_document(what: str = "", file: str = "", text: str = "", title: str = "", copies: int = 1,
+                   two_sided: bool = False, printer: str | None = None):
+    from . import printer as prn
+
+    if file:
+        path = prn.find_file(file)
+        if not path:
+            raise ValueError(f"I can't find a file called {file} in Desktop, Documents or Downloads")
+        return prn.print_file(path, printer, copies, two_sided)
+    if text:
+        return prn.print_text(text, title or "From AMO", printer, copies)
+    if not what:
+        raise ValueError("print what?")
+    head, body = prn.content_for(what, get_db())
+    return prn.print_text(body, title or head, printer, copies)
+
+
+@tool("Ink / toner levels of the printer.")
+def printer_ink():
+    from . import printer as prn
+
+    return prn.ink()
+
+
+@tool("Cancel everything waiting to print.")
+def cancel_printing():
+    from . import printer as prn
+
+    return prn.cancel_all()
+
+
 # ---------------------------------------------------------------- eyes (camera + vision model)
 @tool("Look through AMO's camera and answer a question about what's there: what do you see, what am I "
       "holding, read this, is anyone here.",
@@ -932,6 +974,10 @@ GROUPS: dict[str, tuple[list[str], str]] = {
     "timers": (
         ["set_timer", "set_reminder", "list_timers", "cancel_timer", "timer_left"],
         r"timer|remind me|reminder|alarm|wake me|countdown|in \d+ (?:min|sec|hour)",
+    ),
+    "printer": (
+        ["print_document", "printer_ink", "cancel_printing"],
+        r"\bprint|printer|ink\b|toner|invoice|hard copy|paper copy",
     ),
     "vision": (
         ["look"],

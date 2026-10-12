@@ -29,3 +29,8 @@ Things only you can do (AMO / Claude can't do them for you). Tick them off as yo
       microSD card. Ask for the full wiring/build guide first.
 - [ ] Tailscale (free) on the Mac + phone, so AMO's bodies reach him away from home
 - [ ] Apple Silicon Mac mini (biggest speed upgrade) or Raspberry Pi 5 as an always-on brain
+
+## Printer (HP on Wi-Fi)
+- [ ] Mac: System Settings → Printers & Scanners → Add Printer… → pick the HP (same Wi-Fi)
+- [ ] `.venv/bin/amo printer --test` — shows printers + ink, prints a test page
+- [ ] Try: "print my schedule for tomorrow", "print Lil Jay's invoice", "print that", "how much ink is left?"

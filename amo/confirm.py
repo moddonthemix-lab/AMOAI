@@ -201,6 +201,9 @@ CONFIRM: dict[str, Callable[[dict, dict], str]] = {
     "text_client": lambda r, a: (f"Here's the text to {r['client']} ({r['phone']}): “{r['message']}” "
                                  "Say “send it” to send, or “cancel”."),
     "send_text": lambda r, a: f"Sent to {r['client']}.",
+    "print_document": lambda r, a: r["text"],
+    "printer_ink": lambda r, a: r["text"],
+    "cancel_printing": lambda r, a: r["text"],
     "cancel_text": lambda r, a: "Okay, I won't send it." if r["cancelled"] else "There was no text waiting.",
     "delete_record": lambda r, a: f"Deleted {r['label']} “{r['name']}”.",
     "delete_all_records": lambda r, a: r["text"] if r.get("confirm") else (f"Deleted {r['deleted']} {r['what']}: " + ", ".join(r["names"][:8]) + "."

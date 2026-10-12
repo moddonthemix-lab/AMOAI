@@ -388,6 +388,8 @@ class Agent:
                 content = result.get("answer") or result.get("error", "")
                 if "error" not in result:
                     trace.append({"name": name, "arguments": args, "result": result})
+            elif name in ("print_document", "printer_ink", "cancel_printing") and "error" in result:
+                content = result["error"][:1].upper() + result["error"][1:]  # "I don't see a printer yet…"
             elif name in ("text_client", "send_text", "cancel_text") and "error" in result:
                 content = result["error"]
             elif name == "delete_record" and "error" in result:
@@ -455,6 +457,16 @@ class Agent:
 
         if fastpath.TEXT_RE.match(text.strip()):
             return fastpath.match(text)
+        from .printer import match as print_match
+
+        p = print_match(text)
+        if p:
+            if p[1].get("what") == "that":  # "print that" — what AMO just said
+                if not last_reply.strip():
+                    return None
+                args = {k: v for k, v in p[1].items() if k != "what"}
+                return p[0], {**args, "text": last_reply, "title": "From AMO"}
+            return p
         from .shortcuts import match as data_match
 
         return (timer_match(text, local_now()) or pronounce_match(text, last_reply) or preference_match(text)
