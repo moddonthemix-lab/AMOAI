@@ -79,6 +79,9 @@
   .badges { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0 10px; }
   .badge { padding:3px 9px; border-radius:999px; font-size:12px; font-weight:600; border:1px solid var(--line); }
   .badge.up { color:var(--good); border-color:var(--good); } .badge.down { color:var(--bad); border-color:var(--bad); }
+  .alerts .row { align-items:center; gap:8px; }
+  .alerts .lv { font-variant-numeric: tabular-nums; }
+  .alerts .x { background:none; border:1px solid var(--line); border-radius:8px; padding:2px 8px; cursor:pointer; color:inherit; }
   #thesis { white-space:pre-wrap; font-size:14px; line-height:1.5; }
   .bias { font-size:18px; font-weight:700; margin:2px 0 4px; }
 </style>
@@ -407,6 +410,7 @@ $("manage").addEventListener("click", async e => {
 $("manage").addEventListener("submit", async e => {
   e.preventDefault();
   const form = e.target, kind = form.dataset.kind, id = form.dataset.id;
+  if (!kind) return;  // the chart / alert forms handle themselves
   const data = {};
   for (const el of form.elements) if (el.name) data[el.name] = el.value === "" ? null : el.value;
   try {
@@ -483,10 +487,34 @@ async function renderCharts() {
       </form>
       <div class="chart-grid"><div id="chart" class="mut">Loading…</div>
         <div><div class="bias" id="bias"></div><div class="badges" id="badges"></div><div id="thesis" class="mut"></div></div></div>
+    </section>
+    <section class="card alerts" id="alertcard"><h2>Strat alerts <span class="mut" id="alertcount"></span></h2>
+      <div class="mut" style="margin-bottom:8px">AMO tells you (out loud and on your phone) when a ticker breaks the previous candle's high or low.</div>
+      <div id="alertlist" class="mut">Loading…</div>
+      <form class="chart-bar" id="alertform" style="margin-top:10px">
+        <input id="alertsym" aria-label="Ticker for alert" placeholder="PLTR, NQ, BTC…">
+        <select id="alerttf" aria-label="Timeframe">${[["D", "Daily"], ["4H", "4-hour"], ["60", "Hourly"], ["W", "Weekly"], ["M", "Monthly"]].map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select>
+        <button>Add alert</button>
+      </form>
     </section>`;
+    $("alertform").onsubmit = async e => {
+      e.preventDefault();
+      const sym = $("alertsym").value.trim();
+      if (!sym) return;
+      try { const r = await api("/api/alerts", {method: "POST", body: JSON.stringify({symbol: sym, tf: $("alerttf").value})}); toast(r.text); $("alertsym").value = ""; }
+      catch (err) { toast(err.message); }
+      renderAlerts();
+    };
+    $("alertlist").onclick = async e => {
+      const b = e.target.closest("button[data-alert]");
+      if (!b) return;
+      try { toast((await api(`/api/alerts/${b.dataset.alert}`, {method: "DELETE"})).text); } catch (err) { toast(err.message); }
+      renderAlerts();
+    };
     $("chartform").onsubmit = e => { e.preventDefault(); chartSym = $("sym").value.trim().toUpperCase() || "SPY"; renderCharts(); };
     $("tfs").onclick = e => { const b = e.target.closest("button[data-tf]"); if (b) { chartTf = b.dataset.tf; renderCharts(); } };
   }
+  renderAlerts();
   $("sym").value = chartSym;
   document.querySelectorAll("#tfs button").forEach(b => b.classList.toggle("on", b.dataset.tf === chartTf));
   $("chart").textContent = "Loading…"; $("thesis").textContent = "Reading The Strat…";
@@ -505,6 +533,26 @@ async function renderCharts() {
   } catch (e) { $("chart").textContent = "Couldn't load chart: " + e.message; $("thesis").textContent = ""; }
 }
 
+async function renderAlerts() {
+  if (!$("alertlist")) return;
+  try {
+    const {alerts, max} = await api("/api/alerts");
+    $("alertcount").textContent = `${alerts.length} of ${max}`;
+    $("alertform").style.display = alerts.length >= max ? "none" : "";
+    const lv = v => v == null ? "…" : Number(v).toLocaleString(undefined, {maximumFractionDigits: 2});
+    $("alertlist").classList.toggle("mut", !alerts.length);
+    $("alertlist").innerHTML = alerts.length ? alerts.map(a => `<div class="row">
+        <span><b>${esc(a.name)}</b> <span class="mut">${esc(a.tf_name)}</span></span>
+        <span class="lv">
+          <span class="badge ${a.hit_high ? "up" : ""}" title="previous candle's high">▲ ${lv(a.high)}${a.hit_high ? " broken" : ""}</span>
+          <span class="badge ${a.hit_low ? "down" : ""}" title="previous candle's low">▼ ${lv(a.low)}${a.hit_low ? " broken" : ""}</span>
+          <span class="mut">${a.price == null ? "" : "now " + lv(a.price)}</span>
+          <button class="x" data-alert="${a.id}" aria-label="Remove ${esc(a.name)} alert" title="Remove">✕</button>
+        </span></div>`).join("")
+      : `No alerts — add one below, or tell AMO “put an alert on PLTR for the daily”.`;
+  } catch (e) { $("alertlist").textContent = "Couldn't load alerts: " + e.message; }
+}
+
 // ---- live updates: anything changed by voice, chat or another window shows up within ~2s
 let lastVersion = null;
 async function watchChanges() {
@@ -516,6 +564,7 @@ async function watchChanges() {
       lastDisplayAt = display.at;
       if (!first && display.chart) { chartSym = display.chart; chartTf = display.tf || "D"; showTab("charts"); lastVersion = v; }
     }
+    if (lastVersion !== null && v !== lastVersion && tab === "charts") renderAlerts();  // set by voice → shows here
     if (lastVersion !== null && v !== lastVersion && tab !== "charts") {
       if (tab === "overview") await load();
       else { renderManage.live = true; try { await renderManage(); } finally { renderManage.live = false; } }

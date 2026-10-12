@@ -421,6 +421,26 @@ MIGRATIONS: list[str] = [
         WHEN 'MYM' THEN 0.5 WHEN 'RTY' THEN 50 WHEN 'M2K' THEN 5 WHEN 'CL' THEN 1000 WHEN 'MCL' THEN 100
         WHEN 'GC' THEN 100 WHEN 'MGC' THEN 10 WHEN 'SI' THEN 5000 ELSE 1 END;
     """,
+    # 21 — Strat level alerts (up to 3): tell me when the previous candle's high/low breaks
+    """
+    CREATE TABLE strat_alerts (
+        id INTEGER PRIMARY KEY,
+        symbol TEXT NOT NULL,
+        tf TEXT NOT NULL DEFAULT 'D',
+        active INTEGER NOT NULL DEFAULT 1,
+        bar INTEGER,                 -- start of the candle the levels below belong to
+        high REAL, low REAL,         -- the previous candle's high / low (the triggers)
+        price REAL,
+        hit_high INTEGER NOT NULL DEFAULT 0,
+        hit_low INTEGER NOT NULL DEFAULT 0,
+        checked_at TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE TRIGGER dv_strat_alerts_i AFTER INSERT ON strat_alerts BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_strat_alerts_u AFTER UPDATE OF active, hit_high, hit_low, high, low ON strat_alerts
+        BEGIN UPDATE data_version SET v = v + 1; END;
+    CREATE TRIGGER dv_strat_alerts_d AFTER DELETE ON strat_alerts BEGIN UPDATE data_version SET v = v + 1; END;
+    """,
 ]
 
 

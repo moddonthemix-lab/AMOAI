@@ -730,6 +730,33 @@ def self_rollback():
     return rollback()
 
 
+# ---------------------------------------------------------------- Strat level alerts
+@tool("Alert the user when a ticker breaks the previous candle's high or low (a Strat 2U/2D trigger) on a "
+      "timeframe. Max 3 alerts at a time.",
+      symbol=("string", "Ticker or name, e.g. PLTR, NQ, BTC.", True),
+      timeframe=("enum:D|4H|60|W|M", "Default D (daily).", False))
+def add_level_alert(symbol: str, timeframe: str = "D"):
+    from . import levels
+
+    return levels.add(symbol, timeframe, get_db())
+
+
+@tool("The user's Strat level alerts and their trigger levels.")
+def list_level_alerts():
+    from . import levels
+
+    return {"alerts": levels.views(get_db()), "text": levels.list_text(get_db())}
+
+
+@tool("Remove a Strat level alert (by ticker, e.g. 'PLTR' or 'PLTR daily'), or all of them.",
+      target=("string", "Ticker (optionally + timeframe).", False),
+      all=("boolean", "Remove every alert.", False))
+def remove_level_alert(target: str = "", all: bool = False):  # noqa: A002
+    from . import levels
+
+    return levels.remove(target, bool(all), get_db())
+
+
 # ---------------------------------------------------------------- printer
 @tool("Print on the user's printer: something AMO keeps (what=schedule today|schedule tomorrow|goals|brief|notes|"
       "unpaid_sessions|resale_inventory|open_positions|trading_rules|cravvr_tasks, or invoice:<client>), a file by "
@@ -975,6 +1002,10 @@ GROUPS: dict[str, tuple[list[str], str]] = {
     "timers": (
         ["set_timer", "set_reminder", "list_timers", "cancel_timer", "timer_left"],
         r"timer|remind me|reminder|alarm|wake me|countdown|in \d+ (?:min|sec|hour)",
+    ),
+    "level_alerts": (
+        ["add_level_alert", "list_level_alerts", "remove_level_alert"],
+        r"\balerts?\b|\bbreaks?\b|breakout|breakdown|trigger",
     ),
     "printer": (
         ["print_document", "printer_ink", "cancel_printing"],

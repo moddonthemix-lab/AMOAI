@@ -964,6 +964,39 @@ def version():
     return {"v": db.data_version(), "display": json.loads(display) if display else None}
 
 
+# ======================================================== Strat level alerts (same list as voice/chat)
+class AlertRequest(BaseModel):
+    symbol: str
+    tf: str = "D"
+
+
+@app.get("/api/alerts", dependencies=[Depends(auth)])
+def alerts_list():
+    from .. import levels
+
+    return {"alerts": levels.views(get_db()), "max": levels.MAX_ALERTS, "timeframes": levels.TFS}
+
+
+@app.post("/api/alerts", dependencies=[Depends(auth)])
+def alerts_add(req: AlertRequest):
+    from .. import levels
+
+    try:
+        return levels.add(req.symbol, req.tf, get_db())
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.delete("/api/alerts/{alert_id}", dependencies=[Depends(auth)])
+def alerts_remove(alert_id: int):
+    from .. import levels
+
+    r = levels.remove(str(alert_id), db=get_db())
+    if not r["removed"]:
+        raise HTTPException(404, "no such alert")
+    return r
+
+
 @app.get("/api/market/{symbol}", dependencies=[Depends(auth)])
 async def market_bars(symbol: str, tf: str = "D", n: int = 80):
     """Candles with Strat numbers for charting."""

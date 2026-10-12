@@ -203,8 +203,10 @@ def run_jobs(db: Database, now: datetime | None = None) -> list[str]:
         return ran
     from .briefing import watch_alerts
 
-    for name, job in (("strat_watch", strat_watch), ("studio", studio_nudges), ("rhythm", daily_rhythm),
-                      ("weather_alerts", watch_alerts)):
+    from .levels import check as level_alerts
+
+    for name, job in (("strat_watch", strat_watch), ("level_alerts", level_alerts), ("studio", studio_nudges),
+                      ("rhythm", daily_rhythm), ("weather_alerts", watch_alerts)):
         try:
             if job(db, now):
                 ran.append(name)

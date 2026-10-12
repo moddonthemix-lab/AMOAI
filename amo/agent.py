@@ -388,7 +388,11 @@ class Agent:
                 content = result.get("answer") or result.get("error", "")
                 if "error" not in result:
                     trace.append({"name": name, "arguments": args, "result": result})
-            elif name in ("print_document", "printer_ink", "cancel_printing") and "error" in result:
+            elif name == "list_level_alerts" and "error" not in result:
+                content = result["text"]
+                trace.append({"name": name, "arguments": args, "result": result})
+            elif name in ("print_document", "printer_ink", "cancel_printing", "add_level_alert",
+                          "remove_level_alert") and "error" in result:
                 content = result["error"][:1].upper() + result["error"][1:]  # "I don't see a printer yet…"
             elif name in ("text_client", "send_text", "cancel_text") and "error" in result:
                 content = result["error"]
@@ -457,7 +461,12 @@ class Agent:
 
         if fastpath.TEXT_RE.match(text.strip()):
             return fastpath.match(text)
+        from .levels import match as level_match
         from .printer import match as print_match
+
+        lv = level_match(text)  # before "watch X" (watchlist) so "watch PLTR for a break" is an alert
+        if lv:
+            return lv
 
         p = print_match(text)
         if p:
