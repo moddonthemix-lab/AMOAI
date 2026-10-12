@@ -269,7 +269,8 @@ def summarize(results: list[dict[str, Any]], model: str) -> dict[str, Any]:
         "first_median_ms": med([r["first_ms"] for r in results]),
         "ai_first_median_ms": med([r["first_ms"] for r in ai]),
         "total_median_ms": med([r["total_ms"] for r in results]),
-        "ai_total_median_ms": med([r["total_ms"] for r in ai]),
+        # reply time only for requests the AI answered (shortcuts are instant and would hide it)
+        "ai_total_median_ms": med([r["total_ms"] for r in results if r["path"] in ("model", "coder")]),
         "failures": [r for r in results if not r["ok"]],
         "results": results,
     }
@@ -314,7 +315,9 @@ def compare(summaries: list[dict[str, Any]]) -> str:
     lines += ["", "By kind of request (accuracy · reply time · cases):"]
     for k in KINDS:
         cells = "   ".join(f"{r['model']} {r['acc']:.0f}% {sec(r['ms'])}" for r in rec["table"].get(k, []))
-        lines.append(f"  {k:<7} {cells or '—'}")
+        n = min((r["n"] for r in rec["table"].get(k, [])), default=0)
+        lines.append(f"  {k:<7} {cells or '—'}" + (f"   ({n} cases)" if cells else "")
+                     + ("  — too few to judge, keeping " + rec["split"][k] if k in rec["kept"] else ""))
     best = rows[0]
     fastest_good = min((s for s in rows if s["score"] >= best["score"] - 3),
                        key=lambda s: s["ai_first_median_ms"] or 10**9)

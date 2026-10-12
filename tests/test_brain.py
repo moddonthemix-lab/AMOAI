@@ -44,10 +44,22 @@ def test_amo_brain_auto_sets_the_split(tmp_path, monkeypatch):
                 "why": [] if ok else ["x"]}
 
     for name, ms, action_ok in (("big", 20000, True), ("small", 6000, False)):
-        rs = [res("chat", True, ms)] * 3 + [res("lookup", True, ms)] * 3 + [res("action", action_ok, ms)] * 3
+        rs = [res("chat", True, ms)] * 5 + [res("lookup", True, ms)] * 5 + [res("action", action_ok, ms)] * 5
         (tmp_path / f"results-{name}.json").write_text(json.dumps({"model": name, "results": rs}))
     cli.cmd_brain(SimpleNamespace(off=False, auto=True, chat=None, lookup=None, action=None))
     text = env.read_text()
     assert "AMO_MODEL_CHAT=small" in text and "AMO_MODEL_LOOKUP=small" in text and "AMO_MODEL_ACTION=big" in text
     cli.cmd_brain(SimpleNamespace(off=True, auto=False, chat=None, lookup=None, action=None))
     assert "AMO_MODEL_ACTION=\n" in env.read_text() and not brain.two_tier()
+
+
+def test_too_few_cases_keep_the_current_model(monkeypatch):
+    monkeypatch.setattr(settings, "model_action", "careful")
+
+    def res(kind, ok, ms):
+        return {"kind": kind, "ok": ok, "first_ms": ms, "total_ms": ms, "path": "model", "tags": ["ai"], "why": []}
+
+    a = {"model": "careful", "results": [res("action", True, 18000)] * 2}
+    b = {"model": "fast", "results": [res("action", True, 9000)] * 2}
+    rec = brain.recommend([a, b])
+    assert rec["split"]["action"] == "careful" and rec["kept"] == ["action"]

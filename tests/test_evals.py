@@ -64,9 +64,9 @@ def _res(kind, ok, ms, crashed=False):
 
 def test_compare_picks_the_best_model_and_a_two_tier_split():
     # big: right on everything, slow.  small: as good at chat and lookups, worse at saving things, fast.
-    big = [_res("chat", True, 20000)] * 4 + [_res("lookup", True, 22000)] * 4 + [_res("action", True, 25000)] * 4
-    small = ([_res("chat", True, 6000)] * 4 + [_res("lookup", True, 7000)] * 4
-             + [_res("action", True, 8000)] * 2 + [_res("action", False, 8000)] * 2)
+    big = [_res("chat", True, 20000)] * 6 + [_res("lookup", True, 22000)] * 6 + [_res("action", True, 25000)] * 6
+    small = ([_res("chat", True, 6000)] * 6 + [_res("lookup", True, 7000)] * 6
+             + [_res("action", True, 8000)] * 3 + [_res("action", False, 8000)] * 3)
     broken = [_res("chat", False, 100, crashed=True)] * 12
     a = {"model": "big", "score": 90.0, "ai_score": 100.0, "ai_first_median_ms": 22000, "total_median_ms": 9000,
          "ai_total_median_ms": 22000, "results": big}

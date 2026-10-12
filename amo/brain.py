@@ -68,11 +68,11 @@ def two_tier() -> bool:
 
 
 # ------------------------------------------------------------------ choosing the split from evals
-def recommend(summaries: list[dict[str, Any]], margin: float = 5.0) -> dict[str, Any]:
+def recommend(summaries: list[dict[str, Any]], margin: float = 5.0, min_cases: int = 5) -> dict[str, Any]:
     """Per kind: the fastest model whose accuracy is within `margin` points of the best on that kind.
     Models that crashed on most AI cases (not downloaded, can't use tools) are left out."""
     usable = [s for s in summaries if not broken(s)]
-    out: dict[str, Any] = {"split": {}, "table": {}}
+    out: dict[str, Any] = {"split": {}, "table": {}, "kept": []}
     for k in KINDS:
         rows = []
         for s in usable:
@@ -84,6 +84,10 @@ def recommend(summaries: list[dict[str, Any]], margin: float = 5.0) -> dict[str,
                              "ms": times[len(times) // 2]})
         out["table"][k] = rows
         if not rows:
+            continue
+        if min(r["n"] for r in rows) < min_cases:  # too few cases reached the AI to tell — leave it as it is
+            out["split"][k] = model_for(k)
+            out["kept"].append(k)
             continue
         best = max(r["acc"] for r in rows)
         # a wrong save costs more than a slow one: actions only take a model that's as good as the best
