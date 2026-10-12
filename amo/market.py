@@ -19,6 +19,11 @@ ALIASES = {
     "NQ": "NQ=F", "MNQ": "MNQ=F", "ES": "ES=F", "MES": "MES=F", "YM": "YM=F", "RTY": "RTY=F",
     "CL": "CL=F", "OIL": "CL=F", "CRUDE": "CL=F", "GC": "GC=F", "GOLD": "GC=F", "SI": "SI=F", "SILVER": "SI=F",
     "BTC": "BTC-USD", "BITCOIN": "BTC-USD", "ETH": "ETH-USD", "ETHEREUM": "ETH-USD", "SOL": "SOL-USD",
+    "SOLANA": "SOL-USD", "XRP": "XRP-USD", "RIPPLE": "XRP-USD", "DOGE": "DOGE-USD", "DOGECOIN": "DOGE-USD",
+    "ADA": "ADA-USD", "CARDANO": "ADA-USD", "AVAX": "AVAX-USD", "AVALANCHE": "AVAX-USD", "LINK": "LINK-USD",
+    "CHAINLINK": "LINK-USD", "LTC": "LTC-USD", "LITECOIN": "LTC-USD", "DOT": "DOT-USD", "POLKADOT": "DOT-USD",
+    "BNB": "BNB-USD", "SHIB": "SHIB-USD", "PEPE": "PEPE24478-USD", "SUI": "SUI20947-USD",
+    "MBT": "MBT=F",  # micro bitcoin futures (CME)
     "SPX": "^GSPC", "S&P": "SPY", "S AND P": "SPY", "SP500": "SPY", "NASDAQ": "QQQ", "NDX": "^NDX",
     "DOW": "DIA", "VIX": "^VIX", "DXY": "DX-Y.NYB", "DOLLAR": "DX-Y.NYB", "RUSSELL": "IWM",
     "APPLE": "AAPL", "TESLA": "TSLA", "NVIDIA": "NVDA", "MICROSOFT": "MSFT", "AMAZON": "AMZN",
@@ -46,7 +51,16 @@ class Bar:
 
 def normalize(symbol: str) -> str:
     s = symbol.strip().upper().lstrip("$")
+    # "BTCUSD", "BTC/USD", "BTC-USDT", "BTCUSDT" (exchange spellings) → the coin
+    m = re.fullmatch(r"([A-Z]{2,6})[-/]?USDT?", s)
+    if m and m.group(1) in ALIASES and ALIASES[m.group(1)].endswith("-USD"):
+        return ALIASES[m.group(1)]
     return ALIASES.get(s, s)
+
+
+def is_crypto(symbol: str) -> bool:
+    """Trades 24/7 — no opening bell, no weekends off."""
+    return normalize(symbol).endswith("-USD")
 
 
 def lookup(name: str) -> str:

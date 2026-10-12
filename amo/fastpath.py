@@ -99,6 +99,9 @@ THINK_RE = re.compile(
     _LEAD + r"what do you think (?:about|of)\s+(?P<list>.+?)[?.!]*$", re.I)
 LOOK_RE = re.compile(
     _LEAD + r"how (?:does|do|is|are|'s)\s+(?P<list>.+?)\s+(?:look|looking|setting up|set up)(?:\s+.*)?[?.!]*$", re.I)
+DOING_RE = re.compile(  # "what's doge doing", "what is XRP looking like" — only for real tickers (checked below)
+    _LEAD + r"what(?:'?s| is| are)\s+(?P<list>.+?)\s+(?:doing|looking like|up to)(?:\s+(?:today|right now|now))?[?.!]*$",
+    re.I)
 SETUPS_RE = re.compile(
     _LEAD + r"(?:any|what are the|what'?s the|show me|find|check)?\s*(?:good\s+)?(?:strat\s+)?set ?ups?\s+"
     r"(?:on|for|in)\s+(?P<list>.+?)[?.!]*$", re.I)
@@ -274,7 +277,7 @@ def match(text: str) -> tuple[str, dict[str, Any]] | None:
     wl = _watch_match(t)
     if wl:
         return wl
-    for rx in (TAKE_RE, THINK_RE, LOOK_RE, SETUPS_RE):
+    for rx in (TAKE_RE, THINK_RE, LOOK_RE, DOING_RE, SETUPS_RE):
         m = rx.match(t)
         if m:
             syms = _tickers(m.group("list"), t)

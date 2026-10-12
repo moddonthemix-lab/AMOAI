@@ -29,7 +29,8 @@ def test_quiet_hours_with_minutes(monkeypatch):
     assert not proactive.quiet_now(datetime(2030, 1, 1, 23, 0))
 
 
-def test_an_announcement_is_said_once(db):
+def test_an_announcement_is_said_once(db, monkeypatch):
+    monkeypatch.setattr(settings, "quiet_hours", "")  # same result whatever time the tests run
     proactive.announce("Hello", kind="checkin", key="k1", db=db)
     assert proactive.take_pending(db) == ["Hello"]
     assert proactive.take_pending(db) == []

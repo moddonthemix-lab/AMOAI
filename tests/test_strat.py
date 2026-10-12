@@ -114,3 +114,25 @@ def test_web_search_parses_duckduckgo(monkeypatch):
     assert res[0] == {"title": "Full Timeframe Continuity (FTFC) - TheStrat", "url": "https://thestrat.ai/docs/ftfc/",
                       "snippet": "FTFC means the last open of every timeframe"}
     assert res[1]["url"] == "https://example.com/x"
+
+
+def test_crypto_names_and_rules(db):
+    from datetime import datetime
+
+    from amo import coach, fastpath, market
+
+    assert market.normalize("bitcoin") == "BTC-USD" and market.normalize("BTCUSDT") == "BTC-USD"
+    assert market.normalize("doge") == "DOGE-USD" and market.is_crypto("ETH") and not market.is_crypto("NQ")
+    assert fastpath.match("whats doge doing") == ("strat_analysis", {"symbol": "doge"})
+    assert fastpath.match("what are BTC and ETH doing") == ("strat_compare", {"symbols": "BTC, ETH"})
+    assert fastpath.match("whats Jay doing") is None
+    # "no trades in the first 5 minutes" is about the stock-market open — crypto has none
+    db.insert("trading_rules", {"rule": "No trades in the first 5 minutes", "created_at": "x"})
+    at_open = datetime(2030, 3, 5, 9, 32)
+
+    def broke(sym):
+        read = {"symbol": sym, "bias": "bullish", "why": "up"}
+        c = coach.check_trade(sym, "long", 100, 99, 103, when=at_open, db=db, strat_read=read)
+        return any("first 5 minutes" in i for i in c.issues)
+
+    assert broke("NQ") and not broke("BTC")

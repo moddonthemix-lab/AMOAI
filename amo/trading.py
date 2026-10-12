@@ -12,7 +12,7 @@ TRADE_FIELDS = {
 }
 # Futures: dollars per 1.0 point of price, so P&L comes out in real money.
 MULTIPLIERS = {"NQ": 20, "MNQ": 2, "ES": 50, "MES": 5, "YM": 5, "MYM": 0.5, "RTY": 50, "M2K": 5,
-               "CL": 1000, "MCL": 100, "GC": 100, "MGC": 10, "SI": 5000}
+               "CL": 1000, "MCL": 100, "GC": 100, "MGC": 10, "SI": 5000, "MBT": 0.1}  # MBT: micro bitcoin
 
 
 def multiplier(symbol: str) -> float:

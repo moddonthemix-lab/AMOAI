@@ -166,9 +166,12 @@ def check_trade(symbol: str, side: str, entry: float | None = None, stop: float 
                              + (" AND id != ?" if exclude_trade_id else ""),
                              (today, exclude_trade_id) if exclude_trade_id else (today,))
     t_now = when.time()
+    from .market import is_crypto
+
+    _crypto = is_crypto(symbol)
     for r in rules:
         broken = False
-        if r.kind == "first_minutes":
+        if r.kind == "first_minutes" and not _crypto:  # crypto has no opening bell
             opened = datetime.combine(when.date(), OPEN)
             broken = opened <= when < opened + timedelta(minutes=r.value)
         elif r.kind == "after":
