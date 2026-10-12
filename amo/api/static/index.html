@@ -426,7 +426,7 @@ $("manage").addEventListener("input", e => {
 
 // ================================================================ charts (The Strat)
 let chartSym = "SPY", chartTf = "D", lastDisplayAt = null;
-const TF_LABEL = {D: "Daily", W: "Weekly", M: "Monthly", "60": "60m"};
+const TF_LABEL = {D: "Daily", W: "Weekly", M: "Monthly", "4H": "4H", "60": "60m"};
 const NUM_COLOR = {"1": "var(--mut)", "2U": "var(--good)", "2D": "var(--bad)", "3": "#a855f7"};
 
 function svgChart(data) {
@@ -478,7 +478,7 @@ async function renderCharts() {
       <form class="chart-bar" id="chartform">
         <input id="sym" value="${esc(chartSym)}" aria-label="Ticker" placeholder="SPY, NQ, BTC…">
         <button>Go</button>
-        <span class="seg" id="tfs">${["60", "D", "W", "M"].map(t => `<button type="button" data-tf="${t}">${TF_LABEL[t]}</button>`).join("")}</span>
+        <span class="seg" id="tfs">${["60", "4H", "D", "W", "M"].map(t => `<button type="button" data-tf="${t}">${TF_LABEL[t]}</button>`).join("")}</span>
         <span class="mut" id="chartname"></span>
       </form>
       <div class="chart-grid"><div id="chart" class="mut">Loading…</div>
@@ -496,7 +496,7 @@ async function renderCharts() {
     $("chart").innerHTML = svgChart(bars);
     $("chartname").textContent = bars.name !== bars.symbol ? `${bars.name} · ${bars.symbol}` : bars.symbol;
     $("bias").innerHTML = `<span class="${rep.bias.includes("bull") ? "pos" : rep.bias.includes("bear") ? "neg" : ""}">${esc(rep.bias.toUpperCase())}</span>`;
-    $("badges").innerHTML = ["Q", "M", "W", "D", "60"].filter(t => rep.timeframes[t]).map(t => {
+    $("badges").innerHTML = ["Q", "M", "W", "D", "4H", "60"].filter(t => rep.timeframes[t]).map(t => {
       const tf = rep.timeframes[t];
       return `<span class="badge ${tf.up ? "up" : "down"}" title="price vs ${t} open ${tf.open}">${t === "60" ? "60m" : t} ${tf.arrow} ${tf.type || ""}</span>`;
     }).join("");

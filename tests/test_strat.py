@@ -136,3 +136,56 @@ def test_crypto_names_and_rules(db):
         return any("first 5 minutes" in i for i in c.issues)
 
     assert broke("NQ") and not broke("BTC")
+
+
+def _hourly(start_utc, n, step=3600):
+    from amo.market import Bar
+
+    return [Bar(int(start_utc.timestamp()) + i * step, 100 + i, 101 + i, 99 + i, 100.5 + i) for i in range(n)]
+
+
+def test_four_hour_candles_crypto_utc_blocks():
+    from datetime import datetime, timezone
+
+    from amo.market import four_hour
+
+    bars = four_hour(_hourly(datetime(2030, 3, 5, 2, tzinfo=timezone.utc), 10), "BTC")
+    starts = [datetime.fromtimestamp(b.t, timezone.utc).hour for b in bars]
+    assert starts == [2, 4, 8]  # 02-03 (partial), 04-07, 08-11 — UTC blocks
+    b = bars[1]
+    assert (b.o, b.h, b.l, b.c) == (102, 106, 101, 105.5)  # open of first, high/low of all, close of last
+
+
+def test_four_hour_candles_futures_from_the_6pm_open_through_dst():
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    from amo.market import four_hour
+
+    ny = ZoneInfo("America/New_York")
+    for day in (datetime(2030, 1, 15, 18, tzinfo=ny), datetime(2030, 7, 15, 18, tzinfo=ny)):  # winter and summer
+        bars = four_hour(_hourly(day.astimezone(timezone.utc), 12), "NQ=F", {"exchangeTimezoneName": "America/New_York"})
+        assert [datetime.fromtimestamp(b.t, ny).hour for b in bars] == [18, 22, 2]
+
+
+def test_four_hour_candles_stocks_by_session():
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    from amo.market import Bar, four_hour
+
+    ny = ZoneInfo("America/New_York")
+    hourly = []
+    for day in (5, 6):
+        open_ = datetime(2030, 3, day, 9, 30, tzinfo=ny).astimezone(timezone.utc)
+        hourly += [Bar(int(open_.timestamp()) + i * 3600, 1, 2, 0.5, 1.5) for i in range(7)]  # 9:30 … 15:30
+    bars = four_hour(hourly, "SPY", {"exchangeTimezoneName": "America/New_York"})
+    times = [datetime.fromtimestamp(b.t, ny).strftime("%d %H:%M") for b in bars]
+    assert times == ["05 09:30", "05 13:30", "06 09:30", "06 13:30"]
+
+
+def test_four_hour_requests():
+    from amo import fastpath
+
+    assert fastpath.match("pull up the 4 hour chart for BTC") == ("show_chart", {"symbol": "BTC", "timeframe": "4H"})
+    assert fastpath.match("show me the ETH 4h chart") == ("show_chart", {"symbol": "ETH", "timeframe": "4H"})

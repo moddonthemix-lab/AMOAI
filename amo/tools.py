@@ -588,7 +588,7 @@ def read_webpage(url: str):
       "numbers (1, 2U, 2D, 3) on Monthly/Weekly/Daily, timeframe continuity, setups with triggers and "
       "targets, AMO's graded take (A/B/C, best setup, risk:reward) and a written thesis.",
       symbol=("string", "Ticker or name, e.g. SPY, NQ, BTC, Tesla.", True),
-      timeframe=("enum:D|W|M|60", "Chart candles to show (default D).", False))
+      timeframe=("enum:D|W|M|4H|60", "Chart candles to show (default D).", False))
 def strat_analysis(symbol: str, timeframe: str = "D"):
     from . import strat
 
@@ -816,7 +816,8 @@ def hardware_read(target: str):
 
 @tool("Show a price chart on the AMO dashboard.",
       symbol=("string", "Ticker or name.", True),
-      timeframe=("enum:D|W|M|60", "Candle size: D daily (default), W weekly, M monthly, 60 hourly.", False))
+      timeframe=("enum:D|W|M|4H|60", "Candle size: D daily (default), W weekly, M monthly, 4H four-hour, 60 hourly.",
+                 False))
 def show_chart(symbol: str, timeframe: str = "D"):
     import time as _time
 

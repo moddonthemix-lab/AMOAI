@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -32,7 +32,7 @@ ALIASES = {
 
 # Weekly/monthly/quarterly candles are built from daily data: Yahoo's own 1wk/1mo series append a
 # separate bar for the latest session, which would make the "current month" look like one day.
-INTRADAY = ("60m", "1mo")
+INTRADAY = ("60m", "3mo")  # three months of hourly bars — also builds the 4-hour candles
 DAILY = ("1d", "10y")
 _cache: dict[str, tuple[float, Any]] = {}
 
@@ -104,7 +104,7 @@ def _fetch(symbol: str, interval: str, rng: str) -> tuple[list[Bar], dict[str, A
 
 
 def candles(symbol: str, tf: str = "D") -> tuple[list[Bar], dict[str, Any]]:
-    """Candles for a timeframe: 60, D, W, M or Q (quarterly is built from monthly). Cached 60s."""
+    """Candles for a timeframe: 60, 4H, D, W, M or Q (4H from hourly, W/M/Q from daily). Cached 60s."""
     symbol = normalize(symbol)
     key = f"{symbol}:{tf}"
     hit = _cache.get(key)
@@ -112,14 +112,62 @@ def candles(symbol: str, tf: str = "D") -> tuple[list[Bar], dict[str, Any]]:
         return hit[1]
     if tf == "60":
         out = _fetch(symbol, *INTRADAY)
+    elif tf == "4H":
+        hourly, meta = candles(symbol, "60")
+        out = (four_hour(hourly, symbol, meta), meta)
     elif tf == "D":
         out = _fetch(symbol, *DAILY)
     elif tf in ("W", "M", "Q"):
         daily, meta = candles(symbol, "D")
         out = (aggregate(daily, tf, meta.get("gmtoffset", 0)), meta)
     else:
-        raise ValueError(f"unknown timeframe {tf} (use 60, D, W, M or Q)")
+        raise ValueError(f"unknown timeframe {tf} (use 60, 4H, D, W, M or Q)")
     _cache[key] = (time.time(), out)
+    return out
+
+
+def four_hour(hourly: list[Bar], symbol: str, meta: dict[str, Any] | None = None) -> list[Bar]:
+    """4-hour candles from hourly ones, on the boundaries traders' charts use:
+    crypto — UTC 00:00, 04:00, 08:00…;  futures — from the 6 PM New York session open (18, 22, 02, 06, 10, 14);
+    stocks — each day's session in blocks of four hours from the open (9:30–13:30, 13:30–16:00)."""
+    from zoneinfo import ZoneInfo
+
+    sym = normalize(symbol)
+    try:
+        tz = ZoneInfo((meta or {}).get("exchangeTimezoneName") or "America/New_York")
+    except Exception:  # noqa: BLE001 — unknown zone name
+        tz = ZoneInfo("America/New_York")
+
+    if sym.endswith("-USD"):
+        def key(b: Bar) -> tuple:
+            return (b.t // 14400,)
+    elif sym.endswith("=F"):
+        def key(b: Bar) -> tuple:  # hours since 6 PM the evening before, in New York time (DST-proof)
+            local = datetime.fromtimestamp(b.t, tz)
+            session = (local - timedelta(hours=18)).date()
+            since = (local.hour - 18) % 24
+            return (session, since // 4)
+    else:
+        position: dict[int, tuple] = {}  # bar time → (day, which 4-hour block of that day's session)
+        count: dict[Any, int] = {}
+        for x in hourly:
+            d = datetime.fromtimestamp(x.t, tz).date()
+            position[x.t] = (d, count.get(d, 0) // 4)
+            count[d] = count.get(d, 0) + 1
+
+        def key(b: Bar) -> tuple:
+            return position[b.t]
+
+    out: list[Bar] = []
+    current_key = None
+    for b in hourly:
+        k = key(b)
+        if k != current_key:
+            out.append(Bar(b.t, b.o, b.h, b.l, b.c))
+            current_key = k
+        else:
+            last = out[-1]
+            last.h, last.l, last.c = max(last.h, b.h), min(last.l, b.l), b.c
     return out
 
 

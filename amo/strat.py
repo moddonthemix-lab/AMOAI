@@ -20,9 +20,10 @@ from typing import Any
 
 from .market import Bar, candles, lookup
 
-TF_NAMES = {"Q": "Quarterly", "M": "Monthly", "W": "Weekly", "D": "Daily", "60": "60-minute"}
-THESIS_TFS = ("M", "W", "D")            # the timeframes the thesis is written around
-CONTINUITY_TFS = ("Q", "M", "W", "D", "60")
+TF_NAMES = {"Q": "Quarterly", "M": "Monthly", "W": "Weekly", "D": "Daily", "4H": "4-hour", "60": "60-minute"}
+THESIS_TFS = ("M", "W", "D")            # the timeframes the thesis is written around (must have data)
+SETUP_TFS = ("M", "W", "D", "4H")       # where setups are looked for (4H when there's hourly data)
+CONTINUITY_TFS = ("Q", "M", "W", "D", "4H", "60")
 
 
 def scenario(prev: Bar, cur: Bar) -> str:
@@ -241,7 +242,7 @@ def analyze(symbol: str) -> dict[str, Any]:
 
     want = "long" if "bullish" in bias else "short" if "bearish" in bias else None
     setups: list[Setup] = []
-    for tf in THESIS_TFS:
+    for tf in (t for t in SETUP_TFS if t in frames):
         for s in frames[tf].setups:
             s.with_continuity = None if want is None else (s.direction == want)
             setups.append(s)
@@ -283,7 +284,7 @@ def take(a: dict[str, Any]) -> dict[str, Any]:
     setups: list[Setup] = a["_setups"]
     ftfc = a["continuity"]["ftfc"]
     aligned = [s for s in setups if s.with_continuity and s.status in ("waiting", "triggered")]
-    order = {"M": 0, "W": 1, "D": 2}
+    order = {"M": 0, "W": 1, "D": 2, "4H": 3}
 
     def score(s: Setup) -> tuple:
         rr = risk_reward(s) or 0
@@ -338,7 +339,7 @@ def thesis(a: dict[str, Any]) -> str:
                  f"({', '.join(twos_down) or '—'})")
     lines.append("")
 
-    for tf in THESIS_TFS:
+    for tf in (t for t in SETUP_TFS if t in frames):
         f = frames[tf]
         seq = "-".join(f.sequence[-3:] + [f"[{f.type}]"])
         where = ("inside last bar's range" if f.type == "1" else
@@ -373,7 +374,7 @@ def thesis(a: dict[str, Any]) -> str:
 def _plan(a: dict[str, Any], frames: dict[str, Timeframe], fmt) -> str:
     """Trading plan anchored only on the opens that agree with the bias."""
     price = a["price"]
-    names = {"W": "Weekly", "D": "Daily", "60": "60-minute", "M": "Monthly", "Q": "Quarterly"}
+    names = TF_NAMES
     if "bullish" not in a["bias"] and "bearish" not in a["bias"]:
         w, d = frames["W"], frames["D"]
         return (f"Plan: no continuity — wait. Holding above the Weekly open {fmt(w.open)} and Daily open "

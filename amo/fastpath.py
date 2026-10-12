@@ -72,12 +72,13 @@ STRAT_NOUN_RE = re.compile(  # "SPY thesis"
     _LEAD + _SYM + r"\s+(?:strat|thesis|analysis|breakdown)[.!?]*$", re.I)
 CHART_FOR_RE = re.compile(  # "pull up the weekly chart for NQ"
     _LEAD + r"(?:pull up|show|open|bring up|load|put up|display)\s+(?:me\s+)?(?:the\s+|a\s+)?"
-    r"(?:(?P<tf>daily|weekly|monthly|hourly|60 ?minute)\s+)?(?:chart|graph)\s+(?:for|on|of)\s+(?:the\s+)?"
+    r"(?:(?P<tf>daily|weekly|monthly|hourly|60 ?minute|4[ -]?h(?:ou)?r|4h|four[ -]hour|h4)\s+)?(?:chart|graph)\s+(?:for|on|of)\s+(?:the\s+)?"
     + _SYM + r"[.!?]*$", re.I)
 CHART_SYM_RE = re.compile(  # "pull up the SPY weekly chart"
     _LEAD + r"(?:pull up|show|open|bring up|load)\s+(?:me\s+)?(?:the\s+)?" + _SYM
-    + r"\s+(?:(?P<tf>daily|weekly|monthly|hourly)\s+)?chart[.!?]*$", re.I)
-_TF = {"daily": "D", "weekly": "W", "monthly": "M", "hourly": "60", "60 minute": "60", "60minute": "60"}
+    + r"\s+(?:(?P<tf>daily|weekly|monthly|hourly|60 ?minute|4[ -]?h(?:ou)?r|4h|four[ -]hour|h4)\s+)?chart[.!?]*$", re.I)
+_TF = {"daily": "D", "weekly": "W", "monthly": "M", "hourly": "60", "60 minute": "60", "60minute": "60",
+       "4 hour": "4H", "4hour": "4H", "4h": "4H", "4hr": "4H", "four hour": "4H", "4-hour": "4H", "h4": "4H"}
 _NOT_SYMBOLS = {"it", "that", "this", "me", "my", "the", "market", "markets", "chart"}
 
 
@@ -292,7 +293,8 @@ def match(text: str) -> tuple[str, dict[str, Any]] | None:
     for rx in (CHART_FOR_RE, CHART_SYM_RE):
         m = rx.match(t)
         if m and _symbol(m):
-            tf = (m.group("tf") or "daily").lower()
+            tf = re.sub(r"[ -]", " ", (m.group("tf") or "daily").lower()).replace("four", "4")
+            tf = "4h" if re.fullmatch(r"4 ?h(?:ou)?r|4h|h4|4 hour", tf) else tf
             return "show_chart", {"symbol": _symbol(m), "timeframe": _TF.get(tf, "D")}
     d = _clean_sentence(t)
     m = DELETE_ALL_RE.match(d)

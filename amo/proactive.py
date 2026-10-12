@@ -129,7 +129,7 @@ def strat_watch(db: Database, now: datetime, force: bool = False) -> int:
             if s.status == "triggered":
                 text = (f"Heads up: {name} just triggered the {TF_NAMES[s.tf].lower()} {s.name} {verb} "
                         f"{fmt(s.trigger)}, with continuity{tgt}, stop {fmt(s.stop)}.")
-                key = f"trig:{a['symbol']}:{s.tf}:{s.name}:{s.trigger}:{today if s.tf == 'D' else ''}"
+                key = f"trig:{a['symbol']}:{s.tf}:{s.name}:{s.trigger}:{today if s.tf in ('D', '4H') else ''}"
                 said += announce(text, "alert", key, ttl_minutes=45, db=db, now=now)
         t = strat.take(a)
         if t["grade"] == "A" and t["best"] and t["best"]["status"] == "waiting":

@@ -149,7 +149,7 @@ def check_trade(symbol: str, side: str, entry: float | None = None, stop: float 
             t = take(a)
             if t["best"] and t["best"]["direction"] == side:
                 c.good.append(f"matches the {t['grade']}-grade {t['best']['name']} on the "
-                              f"{ {'M': 'monthly', 'W': 'weekly', 'D': 'daily'}[t['best']['tf']] }")
+                              f"{ {'M': 'monthly', 'W': 'weekly', 'D': 'daily', '4H': '4-hour'}.get(t['best']['tf'], t['best']['tf']) }")
 
     # ---- risk:reward
     if entry is not None and stop is not None and target is not None and entry != stop:
