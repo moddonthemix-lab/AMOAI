@@ -27,10 +27,25 @@ _QUESTION = re.compile(
     r"am i|is there|are there|any|show|list|tell me|give me|read me)\b", re.I)
 # Your own data — anything AMO keeps track of — or a person you know ("who's Marcus").
 _MINE = re.compile(
-    r"\b(?:my|i|me|i'm|i've|owe|owes|schedule|sessions?|clients?|goals?|inventory|trades?|trading|positions?|"
+    r"\b(?:my|i|owe|owes|schedule|sessions?|clients?|goals?|inventory|trades?|trading|positions?|"
     r"rules?|cravvr|revenue|profit|money|notes?|timers?|reminders?|watchlist|reselling|studio|business)\b", re.I)
 _FOLLOW_UP = re.compile(r"^(?:yes|yeah|yep|yup|sure|ok(?:ay)?|do it|go ahead|please|no|nope|that one|the first one|"
                         r"the second one|both)\b", re.I)
+
+
+# Markets (charts, The Strat, a ticker) need the tool-using model, never the small-talk one.
+_MARKET = re.compile(r"\b(?:strat|charts?|candles?|levels?|setups?|triggers?|continuity|thesis|analysis|analy[sz]e|"
+                     r"break ?down|bullish|bearish|calls|puts|futures|stocks?|tickers?|crypto|market|price of|"
+                     r"2u|2d|ftfc|inside bar|outside bar|hammer|shooter|watchlist)\b", re.I)
+
+
+def _market(t: str) -> bool:
+    if _MARKET.search(t):
+        return True
+    from .levels import _tickers_in
+
+    return any(x.isupper() and len(x) >= 2 for x in _tickers_in(t)) or bool(
+        re.search(r"\b(?:bitcoin|btc|eth|ethereum|nasdaq|s&p|spy|qqq|nq|es|tesla|nvidia|apple|gold|oil)\b", t, re.I))
 
 
 def kind(text: str, previous: str = "") -> str:
@@ -39,10 +54,10 @@ def kind(text: str, previous: str = "") -> str:
     if _FOLLOW_UP.match(t) and len(t.split()) <= 4 and previous:
         return kind(previous)  # "yes" answers whatever was being done
     if _QUESTION.match(t) or t.endswith("?"):
-        return "lookup" if _MINE.search(t) or re.match(r"^(?:who|who's|whos)\s+[A-Z]", t) else "chat"
+        return "lookup" if _MINE.search(t) or re.match(r"^(?:who|who's|whos)\s+[A-Z]", t) or _market(t) else "chat"
     if _ACTION.search(t):
         return "action"
-    return "chat"
+    return "lookup" if _market(t) else "chat"
 
 
 def model_for(k: str) -> str:

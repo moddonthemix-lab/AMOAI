@@ -424,8 +424,10 @@ class Agent:
             content = self._tool_loop(llm, convo, schemas, model, trace)
 
         # 2) The model claimed it saved something but never called a tool → make it actually do it.
-        if (answered_by_model and user_text and not _saved_anything(trace) and kind_of(user_text) == "action"
-                and _CLAIM.search(content)):
+        from .levels import _INTENT
+
+        if (answered_by_model and user_text and not _saved_anything(trace)
+                and (kind_of(user_text) == "action" or _INTENT.search(user_text)) and _CLAIM.search(content)):
             log.warning("model claimed an action without a tool call; retrying: %r", content[:120])
             convo += [
                 {"role": "assistant", "content": content},
@@ -585,7 +587,9 @@ class Agent:
 
 _CLAIM = re.compile(
     r"\b(added|adding|i'?ve added|i'?ll add|booked|logged|saved|recorded|created|scheduled|tracked|"
-    r"i'?ll track|tracking|noted|marked|updated|set up|all set|done)\b", re.I)
+    r"i'?ll track|tracking|noted|marked|updated|set up|all set|done|"
+    r"alerts? (?:is |are )?(?:set|on|added|created|active)|i'?ll (?:alert|notify|let you know|ping|watch)|"
+    r"i'?m watching|watching (?:it|them|\w+) for|set (?:an|the|up an?|your) alerts?)\b", re.I)
 
 
 def _saved_anything(trace: list[dict[str, Any]]) -> bool:

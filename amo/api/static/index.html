@@ -169,6 +169,14 @@ async function load() {
   $("goals").innerHTML = d.goals.length ? d.goals.map(g => `<div class="row chk" data-id="${g.id}"><span>${g.done ? "✅" : "⬜️"} ${esc(g.title)}${g.cadence && g.cadence !== "daily" ? ` <span class="mut">(${esc(g.cadence)})</span>` : ""}</span><span class="mut">🔥 ${g.streak}</span></div>`).join("") : `<div class="mut">No goals yet — tell AMO “add a daily goal: …”</div>`;
   document.querySelectorAll(".chk").forEach(el => el.onclick = async () => { await api(`/api/goals/${el.dataset.id}/checkin`, {method: "POST", body: "{}"}); load(); });
   $("trading").innerHTML = row("Today P&L", money(d.trading.today_pnl), sign(d.trading.today_pnl)) + row("Week P&L", money(d.trading.week), sign(d.trading.week)) + row("Open positions", d.trading.open_positions);
+  try {
+    const {alerts} = await api("/api/alerts");
+    const lv = v => v == null ? "…" : Number(v).toLocaleString(undefined, {maximumFractionDigits: 2});
+    $("trading").innerHTML += alerts.length
+      ? alerts.map(a => row(`🔔 ${esc(a.name)} <span class="mut">${esc(a.tf_name)}</span>`,
+          `<span class="${a.hit_high ? "pos" : ""}">▲ ${lv(a.high)}</span> · <span class="${a.hit_low ? "neg" : ""}">▼ ${lv(a.low)}</span>`)).join("")
+      : `<div class="mut" style="margin-top:6px">No Strat alerts — “put an alert on PLTR for the daily”</div>`;
+  } catch {}
   $("resale").innerHTML = row("Items in inventory", d.reselling.inventory) + row("Stale (30+ days)", d.reselling.stale, d.reselling.stale ? "neg" : "") + row("Cravvr open tasks", d.cravvr.open_tasks);
   $("notes").innerHTML = d.notifications.length ? d.notifications.map(n => `<div class="row"><span><b>${esc(n.title)}</b><br><span class="mut">${esc(n.body).replace(/\n/g, "<br>")}</span></span></div>`).join("") + `<button id="clear" style="margin-top:8px">Mark all read</button>` : `<div class="mut">All caught up</div>`;
   if ($("clear")) $("clear").onclick = async () => { await api("/api/notifications/read", {method: "POST"}); load(); };
@@ -370,10 +378,12 @@ async function renderManage() {
   if (!SCHEMA) SCHEMA = await api("/api/schema");
   if (TABS[tab].some(k => SCHEMA[k].fields.some(f => f.type === "client"))) CLIENTS = await api("/api/records/clients");
   const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.search : null;
-  const html = (await Promise.all(TABS[tab].map(renderPanel))).join("");
+  let html = (await Promise.all(TABS[tab].map(renderPanel))).join("");
+  if (tab === "trading") html = alertCardHTML() + html;
   // Don't wipe a form the user is typing in when a live update arrives.
-  if (document.querySelector("#manage form.edit") && renderManage.live) return;
+  if (document.querySelector("#manage form.edit, #alertsym:focus") && renderManage.live) return;
   $("manage").innerHTML = html;
+  if (tab === "trading") bindAlertCard();
   if (focused) { const el = document.querySelector(`[data-search="${focused}"]`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
 }
 
@@ -488,29 +498,8 @@ async function renderCharts() {
       <div class="chart-grid"><div id="chart" class="mut">Loading…</div>
         <div><div class="bias" id="bias"></div><div class="badges" id="badges"></div><div id="thesis" class="mut"></div></div></div>
     </section>
-    <section class="card alerts" id="alertcard"><h2>Strat alerts <span class="mut" id="alertcount"></span></h2>
-      <div class="mut" style="margin-bottom:8px">AMO tells you (out loud and on your phone) when a ticker breaks the previous candle's high or low.</div>
-      <div id="alertlist" class="mut">Loading…</div>
-      <form class="chart-bar" id="alertform" style="margin-top:10px">
-        <input id="alertsym" aria-label="Ticker for alert" placeholder="PLTR, NQ, BTC…">
-        <select id="alerttf" aria-label="Timeframe">${[["D", "Daily"], ["4H", "4-hour"], ["60", "Hourly"], ["W", "Weekly"], ["M", "Monthly"]].map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select>
-        <button>Add alert</button>
-      </form>
-    </section>`;
-    $("alertform").onsubmit = async e => {
-      e.preventDefault();
-      const sym = $("alertsym").value.trim();
-      if (!sym) return;
-      try { const r = await api("/api/alerts", {method: "POST", body: JSON.stringify({symbol: sym, tf: $("alerttf").value})}); toast(r.text); $("alertsym").value = ""; }
-      catch (err) { toast(err.message); }
-      renderAlerts();
-    };
-    $("alertlist").onclick = async e => {
-      const b = e.target.closest("button[data-alert]");
-      if (!b) return;
-      try { toast((await api(`/api/alerts/${b.dataset.alert}`, {method: "DELETE"})).text); } catch (err) { toast(err.message); }
-      renderAlerts();
-    };
+    ${alertCardHTML()}`;
+    bindAlertCard();
     $("chartform").onsubmit = e => { e.preventDefault(); chartSym = $("sym").value.trim().toUpperCase() || "SPY"; renderCharts(); };
     $("tfs").onclick = e => { const b = e.target.closest("button[data-tf]"); if (b) { chartTf = b.dataset.tf; renderCharts(); } };
   }
@@ -531,6 +520,37 @@ async function renderCharts() {
     $("thesis").textContent = rep.thesis.split("\n").slice(2).join("\n");
     $("thesis").classList.remove("mut");
   } catch (e) { $("chart").textContent = "Couldn't load chart: " + e.message; $("thesis").textContent = ""; }
+}
+
+// ---- Strat alerts card (Charts and Trading tabs) — the same list AMO uses by voice/chat
+function alertCardHTML() {
+  return `<section class="card alerts" id="alertcard"><h2>Strat alerts <span class="mut" id="alertcount"></span></h2>
+      <div class="mut" style="margin-bottom:8px">AMO tells you (out loud and on your phone) when a ticker breaks the previous candle's high or low.</div>
+      <div id="alertlist" class="mut">Loading…</div>
+      <form class="chart-bar" id="alertform" style="margin-top:10px">
+        <input id="alertsym" aria-label="Ticker for alert" placeholder="PLTR, NQ, BTC…">
+        <select id="alerttf" aria-label="Timeframe">${[["D", "Daily"], ["4H", "4-hour"], ["60", "Hourly"], ["W", "Weekly"], ["M", "Monthly"]].map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select>
+        <button>Add alert</button>
+      </form>
+    </section>`;
+}
+
+function bindAlertCard() {
+  $("alertform").onsubmit = async e => {
+    e.preventDefault();
+    const sym = $("alertsym").value.trim();
+    if (!sym) return;
+    try { const r = await api("/api/alerts", {method: "POST", body: JSON.stringify({symbol: sym, tf: $("alerttf").value})}); toast(r.text); $("alertsym").value = ""; }
+    catch (err) { toast(err.message); }
+    renderAlerts();
+  };
+  $("alertlist").onclick = async e => {
+    const b = e.target.closest("button[data-alert]");
+    if (!b) return;
+    try { toast((await api(`/api/alerts/${b.dataset.alert}`, {method: "DELETE"})).text); } catch (err) { toast(err.message); }
+    renderAlerts();
+  };
+  renderAlerts();
 }
 
 async function renderAlerts() {

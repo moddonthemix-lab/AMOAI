@@ -42,6 +42,25 @@ def active(db: Database | None = None) -> list[dict[str, Any]]:
 
 
 def add(symbol: str, tf: str = "D", db: Database | None = None, now: datetime | None = None) -> dict[str, Any]:
+    """Set an alert (or several: "PLTR, NQ and BTC")."""
+    names = [x.strip() for x in re.split(r",|\band\b|&|/(?=[A-Za-z]{2})", symbol) if x.strip()]
+    if len(names) > 1:
+        db = db or get_db()
+        done, texts = [], []
+        for n in names:
+            try:
+                r = add_one(n, tf, db, now)
+                done.append(r)
+                texts.append(r["text"])
+            except ValueError as e:
+                texts.append(f"{n}: {e}")
+        if not done:
+            raise ValueError("; ".join(texts))
+        return {**done[-1], "added": [d["name"] for d in done if not d.get("duplicate")], "text": " ".join(texts)}
+    return add_one(symbol, tf, db, now)
+
+
+def add_one(symbol: str, tf: str = "D", db: Database | None = None, now: datetime | None = None) -> dict[str, Any]:
     from .market import lookup
 
     db = db or get_db()
@@ -281,6 +300,41 @@ REMOVE_RE = re.compile(r"^(?:please )?(?:remove|delete|cancel|drop|clear)\s+(?:t
                        r"(?:(?P<all>all(?: (?:of )?my)?|every)\s+)?(?P<what>[\w=.\- ]*?)\s*alerts?[.!]*$", re.I)
 
 
+# Any wording: an alert intent + one or more tickers (+ optional timeframe).
+_INTENT = re.compile(
+    r"\b(?:alerts?|notify me|ping me|let me know|tell me|text me|holler)\b"
+    r"|\bwatch\b.*\b(?:for\s+(?:a\s+)?|the\s+)(?:breaks?|breakouts?|breakdowns?|triggers?|highs?|lows?|levels?)\b"
+    r"|\bon alert\b", re.I)
+_BREAKISH = re.compile(r"\b(?:alerts?|breaks?|breaking|broke|breakouts?|breakdowns?|triggers?|triggered|highs?|lows?|"
+                       r"levels?|2u|2d|on alert)\b", re.I)
+_NOT_TICKERS = {"I", "A", "OK", "AM", "PM", "ME", "MY", "THE", "AND", "OR", "ON", "FOR", "IF", "IT", "AN", "TO", "AT",
+                "PLEASE", "AMO", "HEY", "SET", "PUT", "ADD", "ALERT", "ALERTS", "WATCH", "LET", "KNOW", "WHEN", "HIGH",
+                "LOW", "BREAK", "BREAKS", "DAILY", "WEEKLY", "MONTHLY", "HOURLY", "HOUR", "DAY", "WEEK", "MONTH",
+                "STRAT", "LEVEL", "LEVELS", "TELL", "NOTIFY", "PING", "CAN", "YOU", "US", "UP", "DOWN", "NEW", "ET",
+                "EST", "PST", "UTC", "AI", "TP", "SL"}
+
+
+def _tickers_in(text: str) -> list[str]:
+    """Tickers named in a sentence: all-caps symbols (PLTR, NQ), known names (bitcoin, tesla), $tags, and a
+    capitalised name right after "on"/"for" ("an alert on Palantir")."""
+    from .market import ALIASES
+
+    out: list[str] = []
+    for w in re.findall(r"\$?[A-Za-z][A-Za-z0-9.=\-/]*", text):
+        bare = w.lstrip("$").rstrip(".")
+        up = bare.upper()
+        if up in _NOT_TICKERS:
+            continue
+        if w.startswith("$") or (bare.isupper() and 1 <= len(bare) <= 6) or up in ALIASES:
+            if up not in [o.upper() for o in out]:
+                out.append(bare)
+    if not out:
+        m = re.search(r"\b(?:on|for)\s+([A-Z][a-z]{2,15})\b", text)
+        if m and m.group(1).upper() not in _NOT_TICKERS:
+            out.append(m.group(1))
+    return out
+
+
 def match(text: str) -> tuple[str, dict[str, Any]] | None:
     t = (text or "").strip()
     if LIST_RE.match(t):
@@ -290,11 +344,18 @@ def match(text: str) -> tuple[str, dict[str, Any]] | None:
         return "remove_level_alert", {"all": True}
     if m:
         return "remove_level_alert", {"target": m.group("what").strip()}
-    for rx in ADD_RES:
+    for rx in ADD_RES:  # the exact phrasings first
         m = rx.match(t)
         if m:
             sym = m.group("sym").lstrip("$")
             gd = m.groupdict()
             tf = tf_of(gd.get("tf") or gd.get("tf2"))
             return "add_level_alert", {"symbol": sym, "timeframe": tf}
-    return None
+    # then any wording: "set alerts on PLTR, NQ and BTC", "let me know when PLTR breaks the daily high"
+    if not (_INTENT.search(t) and _BREAKISH.search(t)) or re.search(r"\b(?:remove|delete|cancel|clear|turn off|stop)\b", t, re.I):
+        return None
+    syms = _tickers_in(t)
+    if not syms or len(syms) > MAX_ALERTS:
+        return None
+    tf = re.search(_TFW, t, re.I)
+    return "add_level_alert", {"symbol": ", ".join(syms), "timeframe": tf_of(tf.group("tf") if tf else None)}

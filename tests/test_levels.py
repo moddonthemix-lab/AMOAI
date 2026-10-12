@@ -118,3 +118,37 @@ def test_when_closed_it_shows_the_next_triggers(db, feed):
     assert "next candle's triggers: above 24.50 or below 21.50" in r["text"] and "market's closed" in r["text"]
     assert (r["high"], r["low"]) == (24.5, 21.5)
     assert levels.check(db) == 0
+
+
+@pytest.mark.parametrize("said, symbols, tf", [
+    ("set an alert for PLTR daily", "PLTR", "D"), ("alert me on PLTR", "PLTR", "D"),
+    ("set a daily alert on PLTR", "PLTR", "D"), ("set alerts on PLTR, NQ and BTC", "PLTR, NQ, BTC", "D"),
+    ("put alerts on PLTR and TSLA for the daily", "PLTR, TSLA", "D"),
+    ("let me know when PLTR breaks the daily high", "PLTR", "D"),
+    ("notify me if NQ breaks yesterday's high or low", "NQ", "D"), ("watch PLTR and NQ for a break", "PLTR, NQ", "D"),
+    ("put PLTR on alert", "PLTR", "D"), ("add PLTR to my alerts", "PLTR", "D"),
+    ("set an alert on BTC on the 4 hour", "BTC", "4H"),
+])
+def test_any_wording(said, symbols, tf):
+    assert levels.match(said) == ("add_level_alert", {"symbol": symbols, "timeframe": tf})
+
+
+@pytest.mark.parametrize("said", ["turn off the alerts", "let me know when you're done", "tell me a joke",
+                                  "alert me when my session starts", "let me know when Jay pays"])
+def test_not_alerts(said):
+    assert levels.match(said) is None
+
+
+def test_several_at_once_shows_on_the_dashboard(db, llm, feed):
+    out = Agent(db).chat([{"role": "user", "content": "set alerts on PLTR, NQ and BTC"}])["content"]
+    assert [a["name"] for a in levels.views(db)] == ["PLTR", "NQ", "BTC"] and "3 of 3" in out and llm.calls == []
+
+
+def test_amo_never_claims_an_alert_it_did_not_set(db, llm, feed):
+    from conftest import tool_call
+
+    # a phrasing the shortcut doesn't know: the model says "done" without the tool → made to do it
+    llm.script({"role": "assistant", "content": "Alert is set — I'll let you know when it breaks."},
+               tool_call("add_level_alert", symbol="AMD", timeframe="D"))
+    Agent(db).chat([{"role": "user", "content": "keep an eye on AMD's daily range and alert me"}])
+    assert [a["name"] for a in levels.views(db)] == ["AMD"]

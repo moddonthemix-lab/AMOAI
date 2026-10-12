@@ -68,8 +68,13 @@ STRAT_RE = re.compile(
     r"(?: analysis| thesis| read| breakdown)?\s+(?:on|for|of)\s+(?:the\s+)?" + _SYM + r"(?:\s+chart)?[.!?]*$", re.I)
 STRAT_VERB_RE = re.compile(  # "analyze SPY", "strat SPY"
     _LEAD + r"(?:analy[sz]e|strat)\s+(?:the\s+)?" + _SYM + r"[.!?]*$", re.I)
-STRAT_NOUN_RE = re.compile(  # "SPY thesis"
-    _LEAD + _SYM + r"\s+(?:strat|thesis|analysis|breakdown)[.!?]*$", re.I)
+STRAT_NOUN_RE = re.compile(  # "SPY thesis", "NQ strat levels"
+    _LEAD + _SYM + r"(?:'s)?\s+(?:strat|thesis|analysis|breakdown|levels|strat levels|triggers|setups?)[.!?]*$", re.I)
+LEVELS_RE = re.compile(  # "what are the strat levels for NQ", "levels on ES", "break down NQ for me", "NQ triggers"
+    _LEAD + r"(?:(?:what are|what're|what's|give me|show me|tell me|read me|pull up)\s+)?(?:the\s+|my\s+)?"
+    r"(?:(?:strat|key|trigger|daily|important)\s+)?(?:levels?|triggers?)\s+(?:for|on|in)\s+(?:the\s+)?" + _SYM
+    + r"(?:\s+(?:today|right now|now))?[.!?]*$"
+    r"|" + _LEAD + r"break\s*down\s+(?:the\s+)?" + _SYM.replace("?P<sym>", "?P<sym2>") + r"(?:\s+for me)?[.!?]*$", re.I)
 CHART_FOR_RE = re.compile(  # "pull up the weekly chart for NQ"
     _LEAD + r"(?:pull up|show|open|bring up|load|put up|display)\s+(?:me\s+)?(?:the\s+|a\s+)?"
     r"(?:(?P<tf>daily|weekly|monthly|hourly|60 ?minute|4[ -]?h(?:ou)?r|4h|four[ -]hour|h4)\s+)?(?:chart|graph)\s+(?:for|on|of)\s+(?:the\s+)?"
@@ -99,7 +104,7 @@ TAKE_RE = re.compile(
 THINK_RE = re.compile(
     _LEAD + r"what do you think (?:about|of)\s+(?P<list>.+?)[?.!]*$", re.I)
 LOOK_RE = re.compile(
-    _LEAD + r"how (?:does|do|is|are|'s)\s+(?P<list>.+?)\s+(?:look|looking|setting up|set up)(?:\s+.*)?[?.!]*$", re.I)
+    _LEAD + r"how(?:'s|\s+(?:does|do|is|are|'s))\s+(?P<list>.+?)\s+(?:look|looking|setting up|set up)(?:\s+.*)?[?.!]*$", re.I)
 DOING_RE = re.compile(  # "what's doge doing", "what is XRP looking like" — only for real tickers (checked below)
     _LEAD + r"what(?:'?s| is| are)\s+(?P<list>.+?)\s+(?:doing|looking like|up to)(?:\s+(?:today|right now|now))?[?.!]*$",
     re.I)
@@ -290,6 +295,11 @@ def match(text: str) -> tuple[str, dict[str, Any]] | None:
         m = rx.match(t)
         if m and _symbol(m):
             return "strat_analysis", {"symbol": _symbol(m)}
+    m = LEVELS_RE.match(t)
+    if m:
+        sym = (m.group("sym") or m.group("sym2") or "").replace(" futures", "").strip()
+        if sym and sym.lower() not in _NOT_SYMBOLS and _tickers(sym, t + " strat"):
+            return "strat_analysis", {"symbol": sym}
     for rx in (CHART_FOR_RE, CHART_SYM_RE):
         m = rx.match(t)
         if m and _symbol(m):

@@ -63,3 +63,19 @@ def test_too_few_cases_keep_the_current_model(monkeypatch):
     b = {"model": "fast", "results": [res("action", True, 9000)] * 2}
     rec = brain.recommend([a, b])
     assert rec["split"]["action"] == "careful" and rec["kept"] == ["action"]
+
+
+def test_market_questions_go_to_the_tool_model():
+    for t in ("what are the strat levels for NQ", "how's NQ looking", "break down NQ for me", "PLTR?", "bitcoin"):
+        assert brain.kind(t) != "chat", t
+    for t in ("hey", "tell me a joke", "I'm tired today", "what's the capital of France"):
+        assert brain.kind(t) == "chat", t
+
+
+def test_strat_phrasings_answer_without_the_ai():
+    from amo import fastpath
+
+    for t, sym in (("what are the strat levels for NQ", "NQ"), ("how's NQ looking", "NQ"), ("break down NQ for me", "NQ"),
+                   ("what are the triggers on BTC", "BTC"), ("PLTR levels", "PLTR"), ("NQ strat levels", "NQ")):
+        assert fastpath.match(t) == ("strat_analysis", {"symbol": sym}), t
+    assert fastpath.match("break down my week") is None
