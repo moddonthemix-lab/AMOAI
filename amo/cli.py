@@ -583,8 +583,16 @@ def _server_hub_line() -> str:
     if not st.get("running"):
         return ("AMO's server: NOT connected to the hub — restart it so it reads HUB_TOKEN: "
                 "launchctl kickstart -k gui/$(id -u)/com.amo.server")
-    line = (f"AMO's server: connected, listening (checked {st['seen_ago']}s ago), {st['handled']} handled"
-            if st.get("alive") else "AMO's server: the hub connection stopped — restart AMO")
+    if st.get("alive") and st.get("seen_ago") is None:
+        line = "AMO's server: started, but it hasn't reached the hub yet"
+        if "route to host" in (st.get("last_error") or "") or "not permitted" in (st.get("last_error") or ""):
+            line += ("\n  This Terminal can reach the hub but AMO's background server can't: that's macOS blocking it.\n"
+                     "  Fix: System Settings → Privacy & Security → Local Network → turn ON python3.11 (or amo),\n"
+                     "  then: launchctl kickstart -k gui/$(id -u)/com.amo.server")
+    elif st.get("alive"):
+        line = f"AMO's server: connected, listening (checked {st['seen_ago']}s ago), {st['handled']} handled"
+    else:
+        line = "AMO's server: the hub connection stopped — restart AMO"
     if st.get("busy"):
         line += f", working on {st['busy']} now"
     if st.get("last_error"):

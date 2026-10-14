@@ -176,9 +176,9 @@ class Connector:
                 log.warning("hub: %s; trying again in 5 minutes", e.status)
                 self.state["last_error"] = f"the hub said {e.status}: {e.message}"
                 self._stop.wait(300)
-            except HubOffline:
+            except HubOffline as e:
                 caught_up = False  # catch up on what arrived while the hub was away
-                self.state["last_error"] = "the hub isn't reachable"
+                self.state["last_error"] = scrub(str(e))[:200]  # e.g. "…: [Errno 65] No route to host"
                 self._stop.wait(15)
             except Exception as e:  # noqa: BLE001 — the connector must never take AMO down
                 log.exception("hub connector error")
