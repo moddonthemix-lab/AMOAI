@@ -168,6 +168,8 @@ class Connector:
                     self.hub.flush_outbox()
                 self.state["last_seen"] = time.time()
                 events = self.hub.wait_for_events(wait=25)  # also keeps AMO's dot green
+                if (self.state["last_error"] or "").startswith("can't reach"):
+                    self.state["last_error"] = None  # reached it again
                 if any(e.get("kind") == "channel" for e in events):
                     self.refresh()
                 if self.retry or any(e.get("kind") in ("inbox", "task") for e in events):

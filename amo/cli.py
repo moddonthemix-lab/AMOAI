@@ -586,9 +586,8 @@ def _server_hub_line() -> str:
     if st.get("alive") and st.get("seen_ago") is None:
         line = "AMO's server: started, but it hasn't reached the hub yet"
         if "route to host" in (st.get("last_error") or "") or "not permitted" in (st.get("last_error") or ""):
-            line += ("\n  This Terminal can reach the hub but AMO's background server can't: that's macOS blocking it.\n"
-                     "  Fix: System Settings → Privacy & Security → Local Network → turn ON python3.11 (or amo),\n"
-                     "  then: launchctl kickstart -k gui/$(id -u)/com.amo.server")
+            line += ("\n  This Terminal can reach the hub but AMO's background server can't: macOS blocks it.\n"
+                     "  Fix (asks for your Mac password once): ~/AMO/scripts/mac-hub-relay.sh install")
     elif st.get("alive"):
         line = f"AMO's server: connected, listening (checked {st['seen_ago']}s ago), {st['handled']} handled"
     else:
@@ -598,6 +597,17 @@ def _server_hub_line() -> str:
     if st.get("last_error"):
         line += f"\n  last problem: {st['last_error']}"
     return line
+
+
+def cmd_hub_relay(a):
+    """macOS: pass AMO's hub traffic through a system daemon (see scripts/mac-hub-relay.sh)."""
+    import logging
+    import os
+
+    from .hubrelay import run
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+    run(a.port or int(os.environ.get("AMO_HUB_RELAY") or 8771))
 
 
 def cmd_hub(a):
@@ -610,12 +620,16 @@ def cmd_hub(a):
         print("Not connected: add HUB_URL and HUB_TOKEN to AMO's .env (see docs/FAMILY_HUB.md).")
         return
     url = os.environ.get("HUB_URL") or "http://127.0.0.1:8770"
+    if os.environ.get("AMO_HUB_REMOTE"):
+        url = f"{os.environ['AMO_HUB_REMOTE']} (through the relay)"
     if not familyhub.enabled():
         print("The hub connector is switched off (AMO_HUB=0).")
     try:
         s = familyhub.status()
     except Exception as e:  # noqa: BLE001 — the type only: never print a token
         print(f"Can't reach the hub at {url} ({type(e).__name__}). Is the Chromebook on, and on the same Wi-Fi?")
+        if os.environ.get("AMO_HUB_REMOTE"):
+            print("  Check the relay: ~/AMO/scripts/mac-hub-relay.sh status")
         return
     print(f"Connected to {url} as {s['member']} · {s['unread']} unread · {s['outbox']} waiting in the outbox")
     print(f"Rooms: {', '.join('#' + c for c in s['channels'])}")
@@ -1043,6 +1057,10 @@ def main(argv: list[str] | None = None) -> None:
     br.add_argument("--action", help="model for saving and changing things")
     br.add_argument("--off", action="store_true", help="one model for everything (AMO_CHAT_MODEL)")
     br.set_defaults(fn=cmd_brain)
+
+    hr = sub.add_parser("hub-relay", help="macOS: relay to the Family Hub (run by scripts/mac-hub-relay.sh)")
+    hr.add_argument("--port", type=int, default=0)
+    hr.set_defaults(fn=cmd_hub_relay)
 
     hb = sub.add_parser("hub", help="the Family Hub: connection, what's new, a test question")
     hb.add_argument("--test", action="store_true", help="post a test question to you in #general")

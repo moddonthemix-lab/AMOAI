@@ -32,6 +32,13 @@ def env_file() -> Path:
 
 _load_dotenv(env_file())
 
+# macOS blocks background apps from your home network ("No route to host"), so on a Mac AMO reaches the
+# Family Hub through a tiny relay on this computer (scripts/mac-hub-relay.sh, `amo hub-relay`).
+if os.environ.get("AMO_HUB_RELAY", "").strip().isdigit() and os.environ.get("HUB_URL") \
+        and "AMO_HUB_REMOTE" not in os.environ:
+    os.environ["AMO_HUB_REMOTE"] = os.environ["HUB_URL"]
+    os.environ["HUB_URL"] = f"http://127.0.0.1:{os.environ['AMO_HUB_RELAY'].strip()}"
+
 
 def _env(key: str, default: str) -> str:
     return os.environ.get(key, default)

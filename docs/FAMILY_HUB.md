@@ -50,3 +50,17 @@ the **family memory**. The one exception is a task *you* give AMO: you asked for
 - The hub's limits are handled calmly: too many messages (429) or paused (403) → it waits and tries again;
   a paused thread (423) gets no more posts; a duplicate (409) isn't resent; hub off → messages wait in the
   outbox (`~/.familyhub/outbox/`) and arrive once when it's back.
+
+## macOS: "No route to host"
+
+macOS blocks apps running in the background (AMO's server) from reaching other devices on your Wi-Fi,
+without asking. Terminal is allowed, so `amo hub` works while the server can't. `amo hub` spots this
+and says so. The fix, once (asks for your Mac password):
+
+```
+~/AMO/scripts/mac-hub-relay.sh install
+```
+
+It runs a tiny relay as a system service (those aren't blocked). The relay only listens on this Mac
+(127.0.0.1:8771) and passes AMO's hub traffic straight through to `HUB_URL`. It adds `AMO_HUB_RELAY=8771`
+to `.env`. `mac-hub-relay.sh status` checks it; `mac-hub-relay.sh uninstall` removes it.
