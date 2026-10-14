@@ -590,7 +590,7 @@ def cmd_hub(a):
     if a.test:
         hub = familyhub.client()
         hub.brain = "local"
-        r = hub.ask("general", "Test from AMO: can you see this? Reply here and I'll tell you out loud.", to="boss")
+        r = hub.ask("general", familyhub.TEST_QUESTION, to="boss")
         print("Test question posted in #general — reply to it in the hub." if not r.get("queued")
               else "The hub didn't take it yet; it's in the outbox and goes out when the hub is back.")
 

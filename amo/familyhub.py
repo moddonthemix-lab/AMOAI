@@ -48,6 +48,8 @@ Family memory (shared facts everyone may use):
 {memory}
 """
 
+TEST_QUESTION = "Test from AMO: can you see this? Reply here and I'll tell you out loud."
+
 # Things an agent may not get done without the boss's OK (rule 1 of the hub).
 RISKY = re.compile(r"\b(?:delete|remove|erase|wipe|drop|cancel|book|pay|paid|charge|buy|sell|order|spend|send|text|"
                    r"email|call|message|post (?:to|on)|contact|print|run|execute|install|download|upload|book|log|"
@@ -306,8 +308,10 @@ class Connector:
             return  # the hub paused this thread: no more posts until it's unpaused
         author, said = msg.get("author"), (msg.get("text") or "")
         if root.get("author") == ME and rid != msg["id"]:  # an answer to something AMO asked → tell the boss
+            test = (root.get("text") or "").startswith(TEST_QUESTION[:14])  # `amo hub --test`: say it back
             remember_news(self.db, msg["id"], "answer", author, msg.get("channel"),
-                          f"{who(author)} answered: {said[:220]}", important=author != "boss")
+                          (f"Got your reply on the hub: {said[:220]}" if author == "boss" else
+                           f"{who(author)} answered: {said[:220]}"), important=author != "boss" or test)
             return
         to_me = (msg.get("type") == "question" or (kind == "reply" and author == "boss")
                  or (kind == "mention" and (author == "boss" or root.get("type") in ("question", "task_request"))))

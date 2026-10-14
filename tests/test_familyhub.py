@@ -300,3 +300,10 @@ def test_not_connected(db, llm, monkeypatch):
 def test_family_names_only():
     assert familyhub.match("ask Jay to pay me") is None
     assert familyhub.match("tell Ty to come at 5") is None
+
+
+def test_your_reply_to_the_test_question_is_said_out_loud(hub):
+    hub.hub.threads[101] = {"root": msg(100, author="amo", text=familyhub.TEST_QUESTION), "paused": False}
+    deliver(hub, ("reply", msg(101, type_="post", text="I see it!", reply_to=100), None))
+    said = [r["text"] for r in hub.db.all("SELECT text FROM announcements")]
+    assert said == ["Got your reply on the hub: I see it!"] and hub.hub.posts == []

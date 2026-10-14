@@ -599,6 +599,15 @@ async function watchChanges() {
 showTab((location.hash || "#overview").slice(1));
 watchChanges();
 setInterval(() => { if (tab === "overview") load().catch(() => {}); }, 60000);
+// AMO speaking up on its own (hub news, alerts, reminders) while this page is open with the speaker on.
+// Each announcement is said once, here or by hands-free listening, never both.
+setInterval(async () => {
+  if (!speakOn || document.hidden || (player && !player.paused)) return;
+  try {
+    const r = await api("/api/announcements/next");
+    for (const text of r.say || []) { addMsg("amo", "📣 " + text); await speak(text); }
+  } catch {}
+}, 15000);
 </script>
 </body>
 </html>
