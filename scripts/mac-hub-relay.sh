@@ -45,8 +45,16 @@ PL
     sleep 1
     sudo launchctl bootstrap system "$PLIST"
     set_env AMO_HUB_RELAY "$PORT"
-    sleep 2
-    if curl -fs -m 5 "http://127.0.0.1:$PORT/api/health" >/dev/null; then
+    ok=""
+    for _ in $(seq 1 10); do  # Python can take a few seconds to start
+      sleep 1
+      curl -fs -m 5 "http://127.0.0.1:$PORT/api/health" >/dev/null && { ok=1; break; }
+    done
+    if [[ -z "$ok" && -n "$USER_KEY" ]] && tail -5 "$ROOT/data/logs/$LABEL.log" 2>/dev/null | grep -q "No route to host"; then
+      echo "macOS blocks the relay as $ME too — running it with admin rights instead (macOS always allows those)…"
+      exec "$0" install --root
+    fi
+    if [[ -n "$ok" ]]; then
       echo "✅ The relay reaches the hub."
       launchctl kickstart -k "gui/$(id -u)/com.amo.server" 2>/dev/null && echo "Restarted AMO."
       echo "Check with: $ROOT/.venv/bin/amo hub"
