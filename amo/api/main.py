@@ -282,6 +282,14 @@ def converse(req: ConverseRequest):
     return StreamingResponse(stream(), media_type="application/x-ndjson")
 
 
+@app.get("/api/hub", dependencies=[Depends(auth)])
+def hub_status():
+    """The Family Hub connector inside this server (for `amo hub`)."""
+    from ..familyhub import connector_state
+
+    return connector_state()
+
+
 @app.get("/api/announcements/next", dependencies=[Depends(auth)])
 def announcements_next():
     """Things AMO wants to say on its own, for a body device to speak (marked as spoken)."""

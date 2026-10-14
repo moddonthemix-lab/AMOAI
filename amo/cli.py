@@ -567,6 +567,31 @@ def cmd_cloud(a):
             print(f"\nTest ☁️ {t.model}: {t.text}  (cost ${t.cost_usd:.5f})")
 
 
+def _server_hub_line() -> str:
+    """What the running AMO server's hub connector is doing (it's the part that answers and speaks)."""
+    import json as _json
+    import urllib.request
+
+    req = urllib.request.Request("http://127.0.0.1:8765/api/hub")
+    if settings.api_key:
+        req.add_header("Authorization", f"Bearer {settings.api_key}")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            st = _json.loads(r.read())
+    except Exception as e:  # noqa: BLE001
+        return f"AMO's server: not answering ({type(e).__name__}) — is it running? ./scripts/mac-autostart.sh status"
+    if not st.get("running"):
+        return ("AMO's server: NOT connected to the hub — restart it so it reads HUB_TOKEN: "
+                "launchctl kickstart -k gui/$(id -u)/com.amo.server")
+    line = (f"AMO's server: connected, listening (checked {st['seen_ago']}s ago), {st['handled']} handled"
+            if st.get("alive") else "AMO's server: the hub connection stopped — restart AMO")
+    if st.get("busy"):
+        line += f", working on {st['busy']} now"
+    if st.get("last_error"):
+        line += f"\n  last problem: {st['last_error']}"
+    return line
+
+
 def cmd_hub(a):
     """The Family Hub: connection, unread, outbox, what's new; --test asks the boss a test question."""
     import os
@@ -587,10 +612,19 @@ def cmd_hub(a):
     print(f"Connected to {url} as {s['member']} · {s['unread']} unread · {s['outbox']} waiting in the outbox")
     print(f"Rooms: {', '.join('#' + c for c in s['channels'])}")
     print(familyhub.news_text(mark=False))
+    print(_server_hub_line())
     if a.test:
+        import time as _time
+
+        from .family.hub_client import HubClientError
+
         hub = familyhub.client()
         hub.brain = "local"
-        r = hub.ask("general", familyhub.TEST_QUESTION, to="boss")
+        try:  # the time makes each test new (the hub refuses the exact same message twice in a row)
+            r = hub.ask("general", f"{familyhub.TEST_QUESTION} ({_time.strftime('%H:%M:%S')})", to="boss")
+        except HubClientError as e:
+            print(f"The hub didn't take the test question: {e.message}")
+            return
         print("Test question posted in #general — reply to it in the hub." if not r.get("queued")
               else "The hub didn't take it yet; it's in the outbox and goes out when the hub is back.")
 

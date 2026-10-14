@@ -140,12 +140,15 @@ class Connector:
         self.local_rooms: set[str] = set()
         self.paused_threads: set[int] = set()
         self.quiet_until = 0.0
+        self.state: dict[str, Any] = {"started": None, "last_seen": None, "busy": None, "handled": 0,
+                                       "last_error": None}
         self.retry = False  # items left unread (hub busy / AMO paused): try again on the next tick
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
     # -- running
     def start(self) -> None:
+        self.state["started"] = time.time()
         self._thread = threading.Thread(target=self.run, name="amo-hub", daemon=True)
         self._thread.start()
 
@@ -163,6 +166,7 @@ class Connector:
                     caught_up = True
                 if self.hub.outbox_size():
                     self.hub.flush_outbox()
+                self.state["last_seen"] = time.time()
                 events = self.hub.wait_for_events(wait=25)  # also keeps AMO's dot green
                 if any(e.get("kind") == "channel" for e in events):
                     self.refresh()
@@ -170,12 +174,15 @@ class Connector:
                     self.process_inbox()
             except HubClientError as e:  # 401: wrong token — check back later
                 log.warning("hub: %s; trying again in 5 minutes", e.status)
+                self.state["last_error"] = f"the hub said {e.status}: {e.message}"
                 self._stop.wait(300)
             except HubOffline:
                 caught_up = False  # catch up on what arrived while the hub was away
+                self.state["last_error"] = "the hub isn't reachable"
                 self._stop.wait(15)
-            except Exception:  # noqa: BLE001 — the connector must never take AMO down
+            except Exception as e:  # noqa: BLE001 — the connector must never take AMO down
                 log.exception("hub connector error")
+                self.state["last_error"] = type(e).__name__
                 self._stop.wait(60)
 
     def catch_up(self) -> None:
@@ -212,6 +219,7 @@ class Connector:
             return 0
         done = []
         for item in reversed(items or []):  # oldest first
+            self.state["busy"] = f"{item.get('kind')} #{item.get('id')}"
             try:
                 self.handle(item)
             except HubOffline:
@@ -219,13 +227,16 @@ class Connector:
             except Exception as e:  # noqa: BLE001
                 if not self.on_hub_error(e, item):
                     log.exception("hub: couldn't handle inbox item %s", item.get("id"))
+                    self.state["last_error"] = f"{type(e).__name__} on {item.get('kind')} #{item.get('id')}"
                 elif getattr(e, "status", None) in (403, 429):
                     self.retry = True  # this one and the rest wait until the hub lets AMO post again
                     break
+            finally:
+                self.state["busy"] = None
             done.append(item["id"])
-        if done:
+            self.state["handled"] += 1
             try:
-                self.hub.mark_read(done)
+                self.hub.mark_read([item["id"]])  # one at a time: a slow answer never holds up the rest
             except Exception:  # noqa: BLE001
                 pass
         return len(done)
@@ -444,6 +455,18 @@ def start() -> Connector | None:
     _running.start()
     log.info("connected to the Family Hub at %s", os.environ.get("HUB_URL", "http://127.0.0.1:8770"))
     return _running
+
+
+def connector_state() -> dict[str, Any]:
+    """For `amo hub`: is the server's connector running, and what is it doing?"""
+    if _running is None:
+        return {"running": False, "enabled": enabled()}
+    st = dict(_running.state)
+    now = time.time()
+    return {"running": True, "alive": bool(_running._thread and _running._thread.is_alive()),
+            "busy": st["busy"], "handled": st["handled"], "last_error": st["last_error"],
+            "seen_ago": None if st["last_seen"] is None else int(now - st["last_seen"]),
+            "up_for": None if st["started"] is None else int(now - st["started"])}
 
 
 def stop() -> None:
