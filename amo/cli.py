@@ -532,6 +532,41 @@ def cmd_brain(a):
         print("\nSet it from your eval results:  amo brain --auto   (or --chat / --lookup / --action MODEL, --off)")
 
 
+def cmd_cloud(a):
+    """Cloud AI status: the switch, the key (never shown), the hub and this month's budget."""
+    import importlib.util
+    import os
+
+    from . import cloud
+
+    on = os.environ.get("CLOUD_FOR_PRIVATE_CHATS", "").strip().lower() in ("1", "true", "yes", "on")
+    has_key = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+    print(f"Cloud for your chats (CLOUD_FOR_PRIVATE_CHATS): {'on' if on else 'off'}")
+    print(f"API key (ANTHROPIC_API_KEY): {'set' if has_key else 'missing'}")
+    print(f"anthropic package: {'installed' if importlib.util.find_spec('anthropic') else 'missing — run update-mac.sh'}")
+    print(f"Hub: {os.environ.get('HUB_URL') or 'http://127.0.0.1:8770 (HUB_URL not set)'}, "
+          f"token {'set' if os.environ.get('HUB_TOKEN') else 'missing (HUB_TOKEN)'}")
+    print(f"Big jobs on Opus (AMO_CLOUD_BIG): {'on' if cloud.big_enabled() else 'off'}")
+    if os.environ.get("HUB_TOKEN"):
+        from .family.hub_client import HubClient
+
+        try:
+            b = HubClient(timeout=5).budget()
+            print("Budget this month: " + ", ".join(f"{k} {v}" for k, v in b.items()
+                                                     if k in ("budget", "spent", "remaining", "allowed")))
+        except Exception as e:  # noqa: BLE001
+            print(f"Couldn't reach the hub: {type(e).__name__}")
+    if not cloud.possible():
+        print("\nCloud is off: AMO answers everything locally, as before.")
+        return
+    if a.test:
+        t = cloud.think("Say hi to Modd in five words.", "chat", "You are AMO, a friendly assistant.", [])
+        if t is None:
+            print("\nTest: the hub kept it local (budget, internet or hub) — see the log for why.")
+        else:
+            print(f"\nTest ☁️ {t.model}: {t.text}  (cost ${t.cost_usd:.5f})")
+
+
 def cmd_printer(a):
     """Show printers (and ink), choose one, or print a test page."""
     from . import printer as prn
@@ -938,6 +973,10 @@ def main(argv: list[str] | None = None) -> None:
     br.add_argument("--action", help="model for saving and changing things")
     br.add_argument("--off", action="store_true", help="one model for everything (AMO_CHAT_MODEL)")
     br.set_defaults(fn=cmd_brain)
+
+    cl = sub.add_parser("cloud", help="cloud AI through the Family Hub: status, budget, a test question")
+    cl.add_argument("--test", action="store_true", help="ask Claude one tiny question (costs a fraction of a cent)")
+    cl.set_defaults(fn=cmd_cloud)
 
     b = sub.add_parser("bench", help="time models on this computer")
     b.add_argument("models", nargs="*")

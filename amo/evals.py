@@ -13,6 +13,7 @@ your real data for --mine) — nothing touches your data, no texts are sent, no 
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 import statistics
@@ -159,11 +160,17 @@ def _sandbox(model: str | None):
     settings.print_dry_run = True  # a test run never uses real paper
     if model:
         settings.chat_model = model
+    cloud_switch = os.environ.get("CLOUD_FOR_PRIVATE_CHATS")
+    os.environ["CLOUD_FOR_PRIVATE_CHATS"] = "false"  # the eval measures the local models, and costs nothing
     try:
         yield real_db
     finally:
         for k, v in saved.items():
             setattr(settings, k, v)
+        if cloud_switch is None:
+            os.environ.pop("CLOUD_FOR_PRIVATE_CHATS", None)
+        else:
+            os.environ["CLOUD_FOR_PRIVATE_CHATS"] = cloud_switch
         set_db(real_db)
 
 

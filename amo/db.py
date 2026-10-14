@@ -441,6 +441,11 @@ MIGRATIONS: list[str] = [
         BEGIN UPDATE data_version SET v = v + 1; END;
     CREATE TRIGGER dv_strat_alerts_d AFTER DELETE ON strat_alerts BEGIN UPDATE data_version SET v = v + 1; END;
     """,
+    # 22 — cloud AI (the Family Hub's shared brain): which brain answered, and what it cost
+    """
+    ALTER TABLE timings ADD COLUMN brain TEXT;   -- cloud | local (blank: no AI needed)
+    ALTER TABLE timings ADD COLUMN cost_usd REAL;
+    """,
 ]
 
 

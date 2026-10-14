@@ -52,6 +52,13 @@ elif [[ -x .venv/bin/pip ]]; then
   .venv/bin/pip install -q -e . "pytest>=8"
 fi
 
+# Cloud AI through the Family Hub (only used when switched on — see docs/CLOUD_AI.md)
+if command -v uv >/dev/null && [[ -x .venv/bin/python ]]; then
+  uv pip install --python .venv/bin/python -q "anthropic>=1.13" 2>/dev/null || echo "  couldn't install anthropic (cloud AI stays off)"
+elif [[ -x .venv/bin/pip ]]; then
+  .venv/bin/pip install -q "anthropic>=1.13" 2>/dev/null || echo "  couldn't install anthropic (cloud AI stays off)"
+fi
+
 step "Updating voice (speaking + listening)"
 if command -v uv >/dev/null && [[ -x .venv/bin/python ]]; then
   uv pip install --python .venv/bin/python -q numpy "piper-tts>=1.3" 2>/dev/null \

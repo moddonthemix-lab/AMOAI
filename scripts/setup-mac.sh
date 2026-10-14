@@ -71,6 +71,7 @@ step "Downloading AI models (first time takes a while)"
 step "Installing AMO"
 [[ -x .venv/bin/python ]] || uv venv --python "$PYVER" .venv
 uv pip install --python .venv/bin/python -q -e . "pytest>=8"
+uv pip install --python .venv/bin/python -q "anthropic>=1.13" || warn "anthropic failed to install — cloud AI stays off"
 
 step "Installing voice (Whisper speech-to-text, Piper text-to-speech)"
 for pkg in "numpy>=1.26" "sounddevice>=0.4" "faster-whisper>=1.0"; do

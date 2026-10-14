@@ -113,12 +113,16 @@ def read(path: Path, limit: int = MAX_FILE_CHARS) -> str:
 
 
 # ------------------------------------------------------------------ the code model
+def coder_system(voice: bool = False) -> str:
+    return CODER_SYSTEM.format(assistant=settings.assistant_name, owner=settings.owner_name) + (
+        VOICE_NOTE if voice else "")
+
+
 def ask_coder(prompt: str, voice: bool = False, model: str | None = None, system_extra: str = "",
               history: list[dict[str, Any]] | None = None) -> str:
     from .llm import get_llm
 
-    system = CODER_SYSTEM.format(assistant=settings.assistant_name, owner=settings.owner_name)
-    system += (VOICE_NOTE if voice else "") + system_extra
+    system = coder_system(voice) + system_extra
     earlier = [{"role": m["role"], "content": m["content"]} for m in (history or [])
                if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)][-6:]
     msg = get_llm().chat([{"role": "system", "content": system}, *earlier, {"role": "user", "content": prompt}],
@@ -393,11 +397,15 @@ def explain(ref: str, question: str = "", voice: bool = False) -> dict[str, Any]
     return {"text": answer, "path": str(path)}
 
 
-def answer(question: str, voice: bool = False, history: list[dict[str, Any]] | None = None) -> str:
-    """A coding question or pasted error: include any files it mentions that AMO can read."""
+def code_prompt(question: str) -> str:
+    """A coding question or pasted error, plus any files it mentions that AMO can read."""
     extra = []
     for ref in dict.fromkeys(_PATH.findall(question or "")):
         p = find_path(ref)
         if p and p.is_file():
             extra.append(f"\n{p.name}:\n```\n{read(p, 6000)}\n```")
-    return ask_coder(question + "".join(extra[:3]), voice=voice, history=history)
+    return question + "".join(extra[:3])
+
+
+def answer(question: str, voice: bool = False, history: list[dict[str, Any]] | None = None) -> str:
+    return ask_coder(code_prompt(question), voice=voice, history=history)

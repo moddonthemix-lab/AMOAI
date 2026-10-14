@@ -11,6 +11,9 @@ os.environ["AMO_KNOWLEDGE_DIR"] = os.path.join(_tmp, "knowledge")  # never your 
 os.environ["AMO_PERSONA_FILE"] = os.path.join(_tmp, "persona.md")
 os.environ["AMO_CODE_DIRS"] = os.path.join(_tmp, "code")
 os.environ["AMO_BACKUP_DIR"] = __import__("tempfile").mkdtemp(prefix="amo-test-backups-")
+for _k in ("CLOUD_FOR_PRIVATE_CHATS", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "HUB_TOKEN", "HUB_URL",
+           "AMO_CLOUD_BIG"):
+    os.environ.pop(_k, None)  # tests never reach the cloud or the hub (test_cloud.py uses fakes)
 
 import pytest  # noqa: E402
 

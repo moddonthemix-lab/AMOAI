@@ -31,6 +31,7 @@
   .msg { white-space:pre-wrap; padding:8px 12px; border-radius:10px; max-width:85%; overflow-wrap:anywhere; }
   .msg.you { align-self:flex-end; background:var(--acc); color:#fff; }
   .msg.amo { align-self:flex-start; background:var(--bg); border:1px solid var(--line); }
+  .msg .brain { font-size:12px; opacity:.75; }
   .msg .tools { display:block; font-size:12px; color:var(--mut); margin-top:4px; }
   input, button, select, textarea { font:inherit; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
   button { background:var(--acc); color:#fff; border:0; cursor:pointer; }
@@ -192,10 +193,11 @@ $("speak").onclick = () => {
   if (!speakOn) stopSpeaking();
 };
 
-function addMsg(who, text, tools) {
+function addMsg(who, text, tools, brain) {
   const el = document.createElement("div");
   el.className = "msg " + who;
   el.textContent = text;
+  if (brain) { const b = document.createElement("span"); b.className = "brain"; b.textContent = brain === "cloud" ? " ☁️" : " 🏠"; b.title = brain === "cloud" ? "Answered by the family's cloud brain" : "Answered on this computer"; el.appendChild(b); }
   if (tools && tools.length) { const t = document.createElement("span"); t.className = "tools"; t.textContent = "↳ " + tools.join(", "); el.appendChild(t); }
   $("log").appendChild(el); $("log").scrollTop = $("log").scrollHeight;
   return el;
@@ -246,7 +248,7 @@ async function send(message, channel) {
     waitTimers.forEach(clearTimeout);
     history.push({role: "user", content: message}, {role: "assistant", content: r.content});
     pending.remove();
-    addMsg("amo", r.content, r.tool_calls.map(t => t.name));
+    addMsg("amo", r.content, r.tool_calls.map(t => t.name), r.brain);
     speak(r.content);
     load();
   } catch (err) { waitTimers.forEach(clearTimeout); pending.textContent = "Error: " + err.message; }

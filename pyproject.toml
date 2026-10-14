@@ -29,6 +29,8 @@ voice = [
 vision = ["opencv-python-headless>=4.8", "numpy>=1.26"]
 # Lighter "Hey AMO" detection for a Raspberry Pi / body device
 wake = ["vosk>=0.3.45", "openwakeword>=0.6"]
+# Cloud AI through the Family Hub's shared brain (amo/family): Claude, within the hub's budget
+cloud = ["anthropic>=1.13"]
 postgres = ["psycopg[binary]>=3.1"]
 dev = ["pytest>=8"]
 

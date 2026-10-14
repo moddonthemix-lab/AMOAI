@@ -292,6 +292,7 @@ class Agent:
             if on_text and undone:
                 on_text(undone + " ")
 
+        kind = None
         if model is None:  # two-tier brain: the model that's best at this kind of request
             from . import brain
 
@@ -408,6 +409,14 @@ class Agent:
             elif name in ("strat_analysis", "strat_compare", "show_chart", "watchlist_add",
                           "watchlist_remove", "watchlist_show", "watchlist_scan", "check_trade", "trading_review"):
                 content = result.get("error", "")
+        from . import cloud
+
+        cloud_on = cloud.possible()
+        thought = None
+        if cloud_on and not content and user_text and not fast and not wrapped:
+            thought = self._cloud(user_text, kind, history, channel)  # ☁️ answers that need no tools
+            if thought is not None:
+                content = cloud.refusal_text(thought) if thought.refused else thought.text
         if not content and user_text and not fast:
             from .coding import answer as code_answer, is_code_question
 
@@ -418,7 +427,7 @@ class Agent:
                     content = code_answer(user_text, voice=channel == "voice", history=history[:-1])
                 except LLMError as e:
                     content = (f"{e} Run: amo setup-coder" if "isn't downloaded" in str(e) else str(e))
-        answered_by_model = not content
+        answered_by_model = not content and thought is None
         if not content:  # no shortcut, or it failed: let the model handle it
             convo = convo or build()
             content = self._tool_loop(llm, convo, schemas, model, trace)
@@ -449,7 +458,35 @@ class Agent:
         # competes with your next message for the CPU. learn=True forces it now (in background).
         if learn:
             threading.Thread(target=self._learn_safely, daemon=True).start()
-        return {"content": content, "tool_calls": trace}
+        out = {"content": content, "tool_calls": trace}
+        if cloud_on:  # ☁️ / 🏠 on the dashboard
+            out["brain"] = "cloud" if thought is not None else "local"
+        return out
+
+    def _cloud(self, user_text: str, kind: str | None, history: list[dict[str, Any]], channel: str) -> Any:
+        """Ask the family's shared brain, if this turn needs no tools. None → answer locally as usual."""
+        from . import cloud
+        from .coding import code_prompt, coder_system, is_code_question
+
+        if is_code_question(user_text):
+            job, prompt, system = "code", code_prompt(user_text), coder_system(channel == "voice")
+        else:
+            picked = cloud.job_for(user_text, kind)
+            if picked is None:
+                return None
+            job, prompt = picked
+            system = cloud.system_for(self.build_system_prompt(user_text, channel))
+            prompt = self.turn_note(user_text) + prompt
+        turn = self._turn
+        started = time.monotonic()
+        thought = cloud.think(prompt, job, system, history[:-1])
+        if turn is not None:
+            turn.add("model", (time.monotonic() - started) * 1000)
+            if thought is not None:
+                turn.info.update(path="cloud", model=thought.model, brain="cloud", cost=thought.cost_usd,
+                                 model_calls=turn.info["model_calls"] + 1)
+                turn.mark("first_token")
+        return thought
 
     def _shortcut(self, text: str, last_reply: str) -> tuple[str, dict[str, Any]] | None:
         """Requests handled directly, without the AI: timers, pronunciations, preferences, notes, code

@@ -57,7 +57,9 @@ class Turn:
                 "model_ms": self.sums.get("model"), "first_token_ms": self.marks.get("first_token"),
                 "tool_ms": self.sums.get("tool"), "tts_ms": self.sums.get("tts"),
                 "model_calls": self.info["model_calls"], "tools": ",".join(self.info["tools"])[:300],
-                "ok": 1 if self.info.get("ok", True) else 0})
+                "ok": 1 if self.info.get("ok", True) else 0,
+                "brain": self.info.get("brain") or ("local" if self.info["model_calls"] else None),
+                "cost_usd": self.info.get("cost")})
         except Exception:  # noqa: BLE001 — timing must never break a reply
             pass
 
@@ -93,7 +95,7 @@ def report(db: Database | None = None, days: int = 7) -> dict[str, Any]:
     out: dict[str, Any] = {"count": len(rows), "days": days, "by_path": {}, "slowest": [], "advice": []}
     if not rows:
         return out
-    for path in ("instant", "fastpath", "model", "coder"):
+    for path in ("instant", "fastpath", "model", "coder", "cloud"):
         rs = [r for r in rows if r["path"] == path]
         if rs:
             out["by_path"][path] = {"count": len(rs), "first_median": _pct([r["first_ms"] for r in rs], 0.5),
@@ -113,6 +115,10 @@ def report(db: Database | None = None, days: int = 7) -> dict[str, Any]:
     out["slowest"] = [{"request": r["request"], "path": r["path"], "first": r["first_ms"], "total": r["total_ms"],
                        "model": r["model_ms"], "tool": r["tool_ms"], "stt": r["stt_ms"], "tools": r["tools"]}
                       for r in sorted(rows, key=lambda r: -(r["total_ms"] or 0))[:5]]
+    cloud = [r for r in rows if r.get("brain") == "cloud"]
+    if cloud:
+        out["cloud"] = {"count": len(cloud), "local": sum(1 for r in rows if r.get("brain") == "local"),
+                        "spent": round(sum(r.get("cost_usd") or 0 for r in cloud), 4)}
     out["advice"] = advice(out, model_rows)
     return out
 
@@ -147,10 +153,15 @@ def report_text(db: Database | None = None, days: int = 7) -> str:
     lines = [f"Speed report — last {days} days, {r['count']} requests "
              f"({round(r['share_instant'] * 100)}% instant, no AI needed)",
              f"Median time to first word/sound: {_s(r['first_median'])}", ""]
-    names = {"instant": "Instant answers", "fastpath": "Direct actions", "model": "AI answers", "coder": "Coding"}
+    names = {"instant": "Instant answers", "fastpath": "Direct actions", "model": "AI answers", "coder": "Coding",
+             "cloud": "Cloud AI ☁️"}
     for path, s in r["by_path"].items():
         lines.append(f"  {names[path]:<16} {s['count']:>4}×   first {_s(s['first_median'])} "
                      f"(slow ones {_s(s['first_p90'])})   total {_s(s['total_median'])}")
+    if r.get("cloud"):
+        c = r["cloud"]
+        lines.append(f"  Brains: ☁️ cloud {c['count']}× · 🏠 local {c['local']}× · cloud spend ${c['spent']:.2f} "
+                     f"(the hub's Admin page has the month's budget)")
     p = r["parts"]
     lines += ["", "Where the time goes (medians):",
               f"  speech→text {_s(p['stt_median'])} · AI first word {_s(p['first_token_median'])} · "
