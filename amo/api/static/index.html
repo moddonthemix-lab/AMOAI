@@ -205,21 +205,46 @@ function addMsg(who, text, tools, brain) {
 
 // ---- speaking: AMO's local voice (Piper / macOS voice), browser voice as a fallback
 let player = null;
-function stopSpeaking() { if (player) { player.pause(); player = null; } try { speechSynthesis.cancel(); } catch {} }
-async function speak(text) {
+function stopSpeaking() { if (player) { player.pause(); player = null; } }
+// Only AMO's own voice — never the browser's built-in one. Browsers won't play sound on a page you
+// haven't clicked yet; anything AMO wanted to say then waits, and plays on your next click.
+const heldBack = [];
+async function speak(text, untilDone = false) {
   if (!speakOn || !text) return;
   // Let a short "Got it" finish instead of cutting it off mid-word.
-  if (player && !player.paused) await new Promise(res => { player.onended = res; setTimeout(res, 2500); });
+  if (player && !player.paused) await new Promise(res => { player.onended = res; setTimeout(res, untilDone ? 60000 : 2500); });
   stopSpeaking();
+  let blob;
   try {
     const r = await fetch("/v1/audio/speech", {method: "POST", headers: {"Content-Type": "application/json", ...(key ? {Authorization: "Bearer " + key} : {})}, body: JSON.stringify({input: text})});
     if (!r.ok) throw new Error(r.statusText);
-    player = new Audio(URL.createObjectURL(await r.blob()));
-    await player.play();
-  } catch {
-    try { const u = new SpeechSynthesisUtterance(text.replace(/[*#_`>|]/g, "")); speechSynthesis.speak(u); } catch {}
+    blob = await r.blob();
+  } catch { return; }  // AMO's voice isn't available right now: stay quiet rather than use another voice
+  const me = new Audio(URL.createObjectURL(blob));
+  player = me;
+  try { await me.play(); } catch (e) {
+    if (e && e.name === "NotAllowedError") { heldBack.push(blob); hint(true); }
+    return;
   }
+  if (untilDone) await new Promise(res => { me.onended = res; me.onpause = res; });
 }
+function hint(on) {
+  let h = $("tapToHear");
+  if (on && !h) {
+    h = document.createElement("div"); h.id = "tapToHear"; h.className = "msg amo";
+    h.textContent = "🔊 AMO has something to say — click anywhere to hear it";
+    $("log").appendChild(h); $("log").scrollTop = $("log").scrollHeight;
+  } else if (!on && h) h.remove();
+}
+document.addEventListener("click", async () => {
+  if (!heldBack.length) return;
+  hint(false);
+  for (const blob of heldBack.splice(0)) {
+    stopSpeaking();
+    const me = new Audio(URL.createObjectURL(blob)); player = me;
+    try { await me.play(); await new Promise(res => { me.onended = res; me.onpause = res; }); } catch { break; }
+  }
+}, true);
 
 // "Got it" / "Okay, let me think" — played while AMO works on the real answer.
 async function acknowledge(message) { return playAck("/api/ack?text=" + encodeURIComponent(message)); }
@@ -605,7 +630,7 @@ setInterval(async () => {
   if (!speakOn || document.hidden || (player && !player.paused)) return;
   try {
     const r = await api("/api/announcements/next");
-    for (const text of r.say || []) { addMsg("amo", "📣 " + text); await speak(text); }
+    for (const text of r.say || []) { addMsg("amo", "📣 " + text); await speak(text, true); }
   } catch {}
 }, 15000);
 </script>
