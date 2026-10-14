@@ -61,6 +61,8 @@ and says so. The fix, once (asks for your Mac password):
 ~/AMO/scripts/mac-hub-relay.sh install
 ```
 
-It runs a tiny relay as a system service (those aren't blocked). The relay only listens on this Mac
+It runs a tiny relay as a system service (those aren't blocked). It runs with system rights, so it uses a
+locked copy (`/Library/Application Support/AMO/hubrelay.py`, owned by the system, Apple's Python, standard
+library only), never AMO's own folder, which AMO can edit. The relay only listens on this Mac
 (127.0.0.1:8771) and passes AMO's hub traffic straight through to `HUB_URL`. It adds `AMO_HUB_RELAY=8771`
 to `.env`. `mac-hub-relay.sh status` checks it; `mac-hub-relay.sh uninstall` removes it.

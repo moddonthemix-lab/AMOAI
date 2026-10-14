@@ -2,14 +2,17 @@
 # macOS blocks background apps (AMO's server) from reaching the Family Hub on your Wi-Fi
 # ("No route to host"). Daemons started by the system aren't blocked, so this runs a tiny relay as one:
 # it listens on 127.0.0.1 only and passes AMO's hub traffic straight through to the hub.
-#   ./scripts/mac-hub-relay.sh install [--root] | uninstall | status
+#   ./scripts/mac-hub-relay.sh install | uninstall | status
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 LABEL="com.amo.hubrelay"
 PLIST="/Library/LaunchDaemons/$LABEL.plist"
+# The service runs a locked copy (owned by the system, standard library only), never AMO's own folder:
+# AMO can edit its own code, and that must never become code running with system rights.
+LIBDIR="/Library/Application Support/AMO"
+RELAY="$LIBDIR/hubrelay.py"
 PORT=8771
-ME="$(id -un)"
 
 set_env() { # key value: add or replace a line in .env
   touch .env
@@ -19,24 +22,27 @@ set_env() { # key value: add or replace a line in .env
 case "${1:-install}" in
   install)
     grep -qE '^HUB_URL=http' .env 2>/dev/null || { echo "Add HUB_URL=http://<hub address>:8770 to $ROOT/.env first."; exit 1; }
-    [[ -x .venv/bin/amo ]] || { echo "Run ./scripts/setup-mac.sh first."; exit 1; }
-    USER_KEY="<key>UserName</key><string>$ME</string>"
-    [[ "${2:-}" == "--root" ]] && USER_KEY=""
-    mkdir -p data/logs
+    HUB="$(grep -E '^HUB_URL=' .env | tail -1 | cut -d= -f2- | tr -d '"'"'"' ')"
+    PY=/usr/bin/python3
+    "$PY" -c "import asyncio" 2>/dev/null || { echo "Needs Apple's Python: run  xcode-select --install  then try again."; exit 1; }
+    LOG="/Library/Logs/$LABEL.log"
     echo "Installing the hub relay (macOS will ask for your Mac password)…"
+    sudo mkdir -p "$LIBDIR"
+    sudo cp amo/hubrelay.py "$RELAY"
+    sudo chown -R root:wheel "$LIBDIR"
+    sudo chmod 755 "$LIBDIR"
+    sudo chmod 644 "$RELAY"
     sudo tee "$PLIST" >/dev/null <<PL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>$LABEL</string>
-  <key>ProgramArguments</key><array><string>$ROOT/.venv/bin/amo</string><string>hub-relay</string><string>--port</string><string>$PORT</string></array>
-  <key>WorkingDirectory</key><string>$ROOT</string>
-  $USER_KEY
-  <key>EnvironmentVariables</key><dict><key>AMO_ENV_FILE</key><string>$ROOT/.env</string></dict>
+  <key>ProgramArguments</key><array><string>$PY</string><string>-I</string><string>$RELAY</string><string>--port</string><string>$PORT</string><string>--to</string><string>$HUB</string></array>
+  <key>WorkingDirectory</key><string>/</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>$ROOT/data/logs/$LABEL.log</string>
-  <key>StandardErrorPath</key><string>$ROOT/data/logs/$LABEL.log</string>
+  <key>StandardOutPath</key><string>$LOG</string>
+  <key>StandardErrorPath</key><string>$LOG</string>
 </dict></plist>
 PL
     sudo chown root:wheel "$PLIST"
@@ -50,22 +56,18 @@ PL
       sleep 1
       curl -fs -m 5 "http://127.0.0.1:$PORT/api/health" >/dev/null && { ok=1; break; }
     done
-    if [[ -z "$ok" && -n "$USER_KEY" ]] && tail -5 "$ROOT/data/logs/$LABEL.log" 2>/dev/null | grep -q "No route to host"; then
-      echo "macOS blocks the relay as $ME too — running it with admin rights instead (macOS always allows those)…"
-      exec "$0" install --root
-    fi
     if [[ -n "$ok" ]]; then
       echo "✅ The relay reaches the hub."
       launchctl kickstart -k "gui/$(id -u)/com.amo.server" 2>/dev/null && echo "Restarted AMO."
       echo "Check with: $ROOT/.venv/bin/amo hub"
     else
-      echo "⚠ The relay is running but can't reach the hub yet. Details: tail $ROOT/data/logs/$LABEL.log"
-      [[ -n "$USER_KEY" ]] && echo "  If it says 'No route to host', try: $0 install --root"
+      echo "⚠ The relay is running but can't reach the hub yet. Details: tail $LOG"
     fi
     ;;
   uninstall)
     sudo launchctl bootout "system/$LABEL" 2>/dev/null || true
     sudo rm -f "$PLIST"
+    sudo rm -rf "$LIBDIR"
     [[ -f .env ]] && sed -i '' '/^AMO_HUB_RELAY=/d' .env
     launchctl kickstart -k "gui/$(id -u)/com.amo.server" 2>/dev/null || true
     echo "Removed the hub relay."
@@ -74,5 +76,5 @@ PL
     sudo launchctl print "system/$LABEL" 2>/dev/null | grep -E "state|pid" || echo "not installed"
     curl -fs -m 5 "http://127.0.0.1:$PORT/api/health" && echo || echo "the relay doesn't reach the hub"
     ;;
-  *) echo "usage: $0 install [--root] | uninstall | status"; exit 1 ;;
+  *) echo "usage: $0 install | uninstall | status"; exit 1 ;;
 esac

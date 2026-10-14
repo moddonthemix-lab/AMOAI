@@ -57,3 +57,15 @@ async def serve(port: int, host: str, hub_port: int) -> None:
 def run(port: int) -> None:
     host, hub_port = target()
     asyncio.run(serve(port, host, hub_port))
+
+
+if __name__ == "__main__":  # run standalone by the system service (a locked copy; see mac-hub-relay.sh)
+    import argparse
+
+    p = argparse.ArgumentParser(description="Relay 127.0.0.1:<port> to the Family Hub")
+    p.add_argument("--port", type=int, default=8771)
+    p.add_argument("--to", required=True, help="the hub, e.g. http://192.168.1.208:8770")
+    a = p.parse_args()
+    os.environ["AMO_HUB_REMOTE"] = a.to
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    run(a.port)
