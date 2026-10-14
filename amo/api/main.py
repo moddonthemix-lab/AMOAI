@@ -68,10 +68,16 @@ async def lifespan(app: FastAPI):
         record_crashes()  # AMO's own crashes are recorded so it can fix simple ones (selfrepair.py)
 
         threading.Thread(target=warm_all, daemon=True).start()
+        from .. import familyhub
+
+        familyhub.start()  # the Family Hub connector, when HUB_TOKEN is set
     yield
     if scheduler:
         scheduler.stop()
         watcher.stop()
+        from .. import familyhub
+
+        familyhub.stop()
 
 
 app = FastAPI(title="AMO", version=__version__, lifespan=lifespan)

@@ -567,6 +567,34 @@ def cmd_cloud(a):
             print(f"\nTest ☁️ {t.model}: {t.text}  (cost ${t.cost_usd:.5f})")
 
 
+def cmd_hub(a):
+    """The Family Hub: connection, unread, outbox, what's new; --test asks the boss a test question."""
+    import os
+
+    from . import familyhub
+
+    if not os.environ.get("HUB_TOKEN"):
+        print("Not connected: add HUB_URL and HUB_TOKEN to AMO's .env (see docs/FAMILY_HUB.md).")
+        return
+    url = os.environ.get("HUB_URL") or "http://127.0.0.1:8770"
+    if not familyhub.enabled():
+        print("The hub connector is switched off (AMO_HUB=0).")
+    try:
+        s = familyhub.status()
+    except Exception as e:  # noqa: BLE001 — the type only: never print a token
+        print(f"Can't reach the hub at {url} ({type(e).__name__}). Is the Chromebook on, and on the same Wi-Fi?")
+        return
+    print(f"Connected to {url} as {s['member']} · {s['unread']} unread · {s['outbox']} waiting in the outbox")
+    print(f"Rooms: {', '.join('#' + c for c in s['channels'])}")
+    print(familyhub.news_text(mark=False))
+    if a.test:
+        hub = familyhub.client()
+        hub.brain = "local"
+        r = hub.ask("general", "Test from AMO: can you see this? Reply here and I'll tell you out loud.", to="boss")
+        print("Test question posted in #general — reply to it in the hub." if not r.get("queued")
+              else "The hub didn't take it yet; it's in the outbox and goes out when the hub is back.")
+
+
 def cmd_printer(a):
     """Show printers (and ink), choose one, or print a test page."""
     from . import printer as prn
@@ -973,6 +1001,10 @@ def main(argv: list[str] | None = None) -> None:
     br.add_argument("--action", help="model for saving and changing things")
     br.add_argument("--off", action="store_true", help="one model for everything (AMO_CHAT_MODEL)")
     br.set_defaults(fn=cmd_brain)
+
+    hb = sub.add_parser("hub", help="the Family Hub: connection, what's new, a test question")
+    hb.add_argument("--test", action="store_true", help="post a test question to you in #general")
+    hb.set_defaults(fn=cmd_hub)
 
     cl = sub.add_parser("cloud", help="cloud AI through the Family Hub: status, budget, a test question")
     cl.add_argument("--test", action="store_true", help="ask Claude one tiny question (costs a fraction of a cent)")

@@ -12,6 +12,14 @@ Things only you can do (AMO / Claude can't do them for you). Tick them off as yo
 - [ ] Optional: add your calendar's private link to `AMO_CALENDAR_URLS` in `.env` (iCloud: share calendar → Public
       Calendar → copy the webcal:// link; Google: Settings → calendar → "Secret address in iCal format")
 
+## Family Hub + cloud AI (docs/FAMILY_HUB.md, docs/CLOUD_AI.md)
+- [ ] Chromebook: `python3 -m hub agent token amo` (skip if AMO already has one — it replaces the old one)
+- [ ] `~/AMO/.env`: `HUB_URL=http://192.168.1.208:8770` and `HUB_TOKEN=…`; for cloud also
+      `CLOUD_FOR_PRIVATE_CHATS=true` and `ANTHROPIC_API_KEY=…`
+- [ ] Hub → Admin → ☁️ Cloud AI budgets: give `amo` $1 to start; set a spend limit in the Anthropic Console too
+- [ ] Update, restart AMO, then `amo hub --test` and `amo cloud --test`
+- [ ] Check: AMO's dot is green; `@amo` a question in the hub; give AMO a task; "anything new on the hub?"
+
 ## Tuning — send the output back so AMO can be tuned on real numbers
 - [x] Compare AI models on the test set (llama3.2:3b most accurate but ~25s; gemma4:e2b ~9s)
 - [ ] Re-run with the per-kind breakdown, then switch on the two-tier brain:

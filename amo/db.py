@@ -446,6 +446,39 @@ MIGRATIONS: list[str] = [
     ALTER TABLE timings ADD COLUMN brain TEXT;   -- cloud | local (blank: no AI needed)
     ALTER TABLE timings ADD COLUMN cost_usd REAL;
     """,
+    # 23 — the Family Hub: news for "anything new on the hub?", the boss's 👍/👎, and "may I?" questions
+    """
+    CREATE TABLE hub_news (
+        id INTEGER PRIMARY KEY,
+        key TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL,
+        author TEXT,
+        channel TEXT,
+        summary TEXT NOT NULL,
+        important INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        told_at TEXT
+    );
+    CREATE TABLE hub_feedback (
+        id INTEGER PRIMARY KEY,
+        message_id INTEGER NOT NULL UNIQUE,
+        value INTEGER NOT NULL,
+        text TEXT,
+        rated_at TEXT NOT NULL
+    );
+    CREATE TABLE hub_approvals (
+        id INTEGER PRIMARY KEY,
+        task_id INTEGER NOT NULL,
+        question_id INTEGER,
+        thread_id INTEGER,           -- the task's thread: the hub files replies under it
+        text TEXT NOT NULL,
+        requester TEXT,
+        channel TEXT,
+        created_at TEXT NOT NULL,
+        decided_at TEXT,
+        decision TEXT
+    );
+    """,
 ]
 
 

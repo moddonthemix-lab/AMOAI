@@ -179,6 +179,7 @@ class Agent:
         learn: bool | None = None,
         on_text: Callable[[str], None] | None = None,
         turn: Any = None,
+        local_only: bool = False,
     ) -> dict[str, Any]:
         """Run one assistant turn, timed for the speed report (perf.py). Pass `turn` to add your own
         timings (speech-to-text, first sound) — then you save it; otherwise it's saved here."""
@@ -194,7 +195,7 @@ class Agent:
             on_text(piece)
 
         try:
-            out = self._chat(messages, channel, model, learn, timed_text if on_text else None)
+            out = self._chat(messages, channel, model, learn, timed_text if on_text else None, local_only)
         except Exception:
             turn.info["ok"] = False
             if own:
@@ -224,6 +225,7 @@ class Agent:
         model: str | None = None,
         learn: bool | None = None,
         on_text: Callable[[str], None] | None = None,
+        local_only: bool = False,
     ) -> dict[str, Any]:
         """Run one assistant turn. `messages` is the chat history WITHOUT a system prompt
         (any client-supplied system message is kept, appended after ours).
@@ -231,6 +233,8 @@ class Agent:
         on_text: if given, receives the reply as it's written (piece by piece for answers, so
         voice can start speaking the first sentence early; all at once for saved actions, which
         are verified before anything is said).
+
+        local_only: never the cloud (a 🏠 local-only hub room).
 
         Returns {"content": str, "tool_calls": [{"name", "arguments", "result"}]}.
         """
@@ -389,6 +393,10 @@ class Agent:
                 content = result.get("answer") or result.get("error", "")
                 if "error" not in result:
                     trace.append({"name": name, "arguments": args, "result": result})
+            elif name.startswith("hub_"):
+                content = result.get("text") or result.get("error", "")
+                if "error" not in result:
+                    trace.append({"name": name, "arguments": args, "result": result})
             elif name == "list_level_alerts" and "error" not in result:
                 content = result["text"]
                 trace.append({"name": name, "arguments": args, "result": result})
@@ -411,7 +419,7 @@ class Agent:
                 content = result.get("error", "")
         from . import cloud
 
-        cloud_on = cloud.possible()
+        cloud_on = cloud.possible() and not local_only
         thought = None
         if cloud_on and not content and user_text and not fast and not wrapped:
             thought = self._cloud(user_text, kind, history, channel)  # ☁️ answers that need no tools
@@ -500,8 +508,13 @@ class Agent:
 
         if fastpath.TEXT_RE.match(text.strip()):
             return fastpath.match(text)
+        from .familyhub import match as hub_match
         from .levels import match as level_match
         from .printer import match as print_match
+
+        h = hub_match(text)  # "anything new on the hub?", "ask Scholar to…"
+        if h:
+            return h
 
         lv = level_match(text)  # before "watch X" (watchlist) so "watch PLTR for a break" is an alert
         if lv:

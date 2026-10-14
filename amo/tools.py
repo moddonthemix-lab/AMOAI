@@ -757,6 +757,49 @@ def remove_level_alert(target: str = "", all: bool = False):  # noqa: A002
     return levels.remove(target, bool(all), get_db())
 
 
+# ---------------------------------------------------------------- the Family Hub
+@tool("What's new on the Family Hub (answers, finished tasks, agents asking for the user's OK).")
+def hub_news() -> dict[str, Any]:
+    from .familyhub import news_text
+
+    return {"text": news_text()}
+
+
+@tool("Give a family agent a task on the Family Hub (Scholar researches, Builder codes, Baby learns, Butler reviews).",
+      assignee=("string", "scholar | builder | baby | butler", True),
+      text=("string", "What they should do, in the user's words.", True))
+def hub_request_task(assignee: str, text: str) -> dict[str, Any]:
+    from .familyhub import request_task
+
+    return request_task(assignee, text)
+
+
+@tool("Ask a family agent a question on the Family Hub.",
+      member=("string", "scholar | builder | baby | butler", True),
+      question=("string", "The question.", True))
+def hub_ask(member: str, question: str) -> dict[str, Any]:
+    from .familyhub import ask_member
+
+    return ask_member(member, question)
+
+
+@tool("Post a message on the Family Hub for the whole family.",
+      text=("string", "The message.", True),
+      channel=("string", "general | business | discoveries | technical-help (default general)", False))
+def hub_post(text: str, channel: str = "general") -> dict[str, Any]:
+    from .familyhub import post_message
+
+    return post_message(channel, text)
+
+
+@tool("Propose a fact for the family memory on the Family Hub (only when the user asks; it waits for their OK).",
+      text=("string", "The fact.", True))
+def hub_propose_memory(text: str) -> dict[str, Any]:
+    from .familyhub import propose_memory
+
+    return propose_memory(text)
+
+
 # ---------------------------------------------------------------- printer
 @tool("Print on the user's printer: something AMO keeps (what=schedule today|schedule tomorrow|goals|brief|notes|"
       "unpaid_sessions|resale_inventory|open_positions|trading_rules|cravvr_tasks, or invoice:<client>), a file by "
@@ -1006,6 +1049,10 @@ GROUPS: dict[str, tuple[list[str], str]] = {
     "level_alerts": (
         ["add_level_alert", "list_level_alerts", "remove_level_alert"],
         r"\balerts?\b|\bbreaks?\b|breakout|breakdown|trigger",
+    ),
+    "hub": (
+        ["hub_news", "hub_request_task", "hub_ask", "hub_post", "hub_propose_memory"],
+        r"\bhub\b|scholar|builder|butler|\bbaby\b|the family|family memory",
     ),
     "printer": (
         ["print_document", "printer_ink", "cancel_printing"],
