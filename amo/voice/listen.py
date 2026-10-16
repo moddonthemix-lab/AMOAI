@@ -330,7 +330,12 @@ class Listener:
 
     def speak_announcements(self) -> None:
         """Say anything AMO queued up on its own (alerts, reminders, brief) — not while asleep."""
-        if self.asleep or self.announcements is None:
+        if self.announcements is None:
+            return
+        from ..announcer import listener_checked_in
+
+        listener_checked_in()  # while listening runs, it does the talking (not the server's announcer) —
+        if self.asleep:        # and "go to sleep" keeps everything quiet
             return
         try:
             items = self.announcements()

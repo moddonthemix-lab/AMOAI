@@ -71,6 +71,9 @@ async def lifespan(app: FastAPI):
         from .. import familyhub
 
         familyhub.start()  # the Family Hub connector, when HUB_TOKEN is set
+        from .. import announcer
+
+        announcer.start()  # alerts, hub news, reminders: said out loud on the Mac, no page needed
     yield
     if scheduler:
         scheduler.stop()
@@ -78,6 +81,9 @@ async def lifespan(app: FastAPI):
         from .. import familyhub
 
         familyhub.stop()
+        from .. import announcer
+
+        announcer.stop()
 
 
 app = FastAPI(title="AMO", version=__version__, lifespan=lifespan)
