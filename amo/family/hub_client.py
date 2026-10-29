@@ -86,8 +86,10 @@ class HubClient:
         except (urllib.error.URLError, OSError) as e:
             raise HubOffline(f"can't reach the hub at {self.url}: {e}") from None
 
-    def _send(self, channel, type_, text=None, data=None, reply_to=None, files=None):
+    def _send(self, channel, type_, text=None, data=None, reply_to=None, files=None, form=None):
         body = {"type": type_, "data": dict(data or {})}
+        if form:
+            body["data"]["form"] = form
         if files:
             body["data"]["files"] = [f["id"] if isinstance(f, dict) else int(f) for f in files]
         if self.brain:
@@ -224,6 +226,18 @@ class HubClient:
         return self._write("/api/budget/usage", {"model": model, "input_tokens": input_tokens,
                                                  "output_tokens": output_tokens, "cost_usd": cost_usd, "note": note})
 
+    def report_pnl(self, pnl_usd, mode="paper", equity_usd=None, trades=0, note="", day=None):
+        """Record a day's profit/loss. mode: "paper" (pretend money) or "live" (real money).
+        day: "YYYY-MM-DD", default today. Sending the same day again replaces it."""
+        body = {"pnl_usd": pnl_usd, "mode": mode, "equity_usd": equity_usd, "trades": trades, "note": note}
+        if day:
+            body["day"] = day
+        return self._write("/api/pnl", body)
+
+    def pnl(self, member=None, mode=None, days=365):
+        """Daily P&L and totals: {days: [{day, pnl_usd, total_usd, ...}], totals: {...}}."""
+        return self._req("GET", "/api/pnl", params={"member": member, "mode": mode, "days": days})
+
     def interests(self):
         """The boss's interests and goals: what to explore and work towards."""
         return [m["text"] for m in self.memories(topic="interests")]
@@ -247,8 +261,8 @@ class HubClient:
         return self._req("GET", "/api/brief")
 
     # -- writing (one helper per message type)
-    def post(self, channel, text, reply_to=None, files=None):
-        return self._send(channel, "post", text, reply_to=reply_to, files=files)
+    def post(self, channel, text, reply_to=None, files=None, form=None):
+        return self._send(channel, "post", text, reply_to=reply_to, files=files, form=form)
 
     def ask(self, channel, text, to=None, reply_to=None):
         return self._send(channel, "question", text, {"to": to} if to else {}, reply_to)
@@ -266,10 +280,20 @@ class HubClient:
     def update_task(self, task_id, status, note=""):
         return self._write(f"/api/tasks/{int(task_id)}/update", {"status": status, "note": note})
 
-    def post_result(self, task_id, summary, artifacts=None, files=None, channel="tasks"):
-        """files: uploaded to the task's channel (see upload_file); results go into the task's thread."""
+    def post_result(self, task_id, summary="", artifacts=None, files=None, channel="tasks", form=None):
+        """files: uploaded to the task's channel (see upload_file); results go into the task's thread.
+        form: a filled-in shared form {"name", "items", "note"} (required when the task has expects_form)."""
         return self._send(channel, "result", data={"task_id": task_id, "summary": summary,
-                                                   "artifacts": artifacts or []}, files=files)
+                                                   "artifacts": artifacts or []}, files=files, form=form)
+
+    # -- shared forms
+    def forms(self):
+        """Every shared form: [{name, title, description, list, allow_empty, fields: [...]}]."""
+        return self._req("GET", "/api/forms")["forms"]
+
+    def form(self, name):
+        """One form, including its json_schema (give that to the AI so its answer has the right shape)."""
+        return self._req("GET", f"/api/forms/{urllib.parse.quote(name)}")
 
     def post_finding(self, channel, claim, status, confidence, sources=None, reply_to=None, files=None):
         return self._send(channel, "finding", data={"claim": claim, "status": status, "confidence": confidence,

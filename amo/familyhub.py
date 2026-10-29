@@ -368,18 +368,101 @@ class Connector:
     def do_for_boss(self, task: dict[str, Any], text: str, local_only: bool) -> None:
         """The boss's own task: AMO's normal abilities (schedule, money, Strat, printer…)."""
         from .agent import Agent
+        from .tradeforms import SCORE_FORM, wanted_form
 
+        form = wanted_form(task)
+        if form == SCORE_FORM:  # grading needs no chat: outcomes come from the price data
+            return self.answer_with_form(task, form, None, local_only)
         try:
             out = (self._agent or Agent(self.db)).chat([{"role": "user", "content": text}], channel="hub",
                                                        local_only=local_only)
         except Exception as e:  # noqa: BLE001
             self.hub.update_task(task["id"], "blocked", f"I hit a problem: {type(e).__name__}. Is Ollama running?")
             return
+        if form:
+            return self.answer_with_form(task, form, out, local_only)
         self.hub.brain = out.get("brain", "local")
         artifacts = [c["name"] for c in out.get("tool_calls", [])][:10]
         self.hub.post_result(task["id"], scrub(out.get("content") or "Done."), artifacts=artifacts)
         remember_news(self.db, f"done{task['id']}", "done", ME, task.get("channel"),
                       f"I finished your hub task “{task.get('title', '')[:80]}”.")
+
+    # -- answering with a shared form (docs/TRADING_WORKFLOW.md in the hub repo)
+    def answer_with_form(self, task: dict[str, Any], name: str, out: dict[str, Any] | None,
+                         local_only: bool) -> None:
+        """Fill the form the task asks for and post it as the result: exact data for the next agent."""
+        from . import tradeforms as tf
+        from .family.hub_client import HubClientError
+
+        form = self.hub.form(name)
+        if name == tf.SETUP_FORM:
+            filled, brain, extra = self.setups_form(form, out or {}, local_only)
+        elif name == tf.SCORE_FORM:
+            filled, brain, extra = self.scorecard_form(form, local_only)
+        else:  # any other form the boss made: filled from AMO's answer
+            t = self.fill(form, "Fill this from my analysis:\n" + ((out or {}).get("content") or ""), local_only)
+            filled, brain, extra = (t.form if t else None), (t.brain if t else "local"), None
+            if not filled:
+                self.hub.update_task(task["id"], "blocked", f"I couldn't fill the '{name}' form.")
+                return
+        self.hub.brain = brain
+        try:
+            self.hub.post_result(task["id"], form=filled, channel=task.get("channel") or "tasks")
+        except HubClientError as e:  # the hub checks every form; say what it refused, don't send plain text
+            log.warning("hub refused the %s form: %s", name, e.message)
+            self.state["last_error"] = f"the hub refused my {name} form: {e.message}"[:200]
+            self.hub.update_task(task["id"], "blocked", f"The hub refused my {name} form: {e.message}")
+            return
+        if extra:
+            extra()
+        n = len(filled["items"])
+        remember_news(self.db, f"done{task['id']}", "done", ME, task.get("channel"),
+                      f"I posted “{task.get('title', '')[:60]}” to the hub: {n} item{'s' if n != 1 else ''}.")
+
+    def fill(self, form: dict[str, Any], prompt: str, local_only: bool) -> Any:
+        """brain.fill_form, or None if the brain couldn't (AMO then builds the form from his engine)."""
+        try:
+            t = self.brain().fill_form(form, prompt, local_only=local_only, system=self.system(local_only))
+        except Exception as e:  # noqa: BLE001 — Ollama down, hub unreachable for the budget…
+            log.warning("couldn't fill the %s form with the brain: %s", form.get("name"), type(e).__name__)
+            return None
+        return t if (t is not None and t.form and not t.refused) else None
+
+    def setups_form(self, form: dict[str, Any], out: dict[str, Any], local_only: bool):
+        from . import tradeforms as tf
+        from .proactive import watchlist_symbols
+
+        symbols = tf.symbols_from(out) or watchlist_symbols(self.db)
+        cands, problems = tf.candidates(symbols)
+        rates = tf.hit_rates(self.db)
+        ranked = tf.rank(cands, rates)
+        t = self.fill(form, tf.setups_prompt(out.get("content") or "", ranked, rates), local_only) if ranked else None
+        items, corrected, dropped = tf.check_setups(t.form if t else None, ranked)
+        if not items and ranked and not (t and not t.form["items"]):  # no usable AI answer: the engine's own pick
+            items = [tf._item(c) for c in ranked[:tf.MAX_SETUPS]]
+        if corrected or dropped:
+            log.info("trade_setup: corrected %s numbers, dropped %s made-up setups", corrected, dropped)
+        note = tf.setups_note(cands, problems, (t.form.get("note") if t else "") or "")
+        if not items:
+            note = note or ("No setups worth trading for the next session." if symbols else
+                            "No setups: my watchlist is empty.")
+        filled = {"name": form["name"], "items": items, "note": note[:1500]}
+        return filled, (t.brain if t else "local"), (lambda: tf.save_plan(self.db, None, filled, cands))
+
+    def scorecard_form(self, form: dict[str, Any], local_only: bool):
+        from . import tradeforms as tf
+
+        plan = tf.last_plan(self.db)
+        if plan is None:
+            return ({"name": form["name"], "items": [], "note": "No plan to grade: I haven't posted top setups since "
+                     "the last scorecard."}, "local", None)
+        rows = tf.grade_rows(plan)
+        line = tf.score_line(rows, self.db)
+        t = self.fill(form, tf.scorecard_prompt(rows, line), local_only) if rows else None
+        lesson = ((t.form.get("note") if t else "") or "").strip()
+        note = line + (f" Lesson: {lesson}" if lesson else "")
+        filled = {"name": form["name"], "items": tf.check_scorecard(t.form if t else None, rows), "note": note[:1500]}
+        return filled, (t.brain if t else "local"), (lambda: tf.save_grades(self.db, plan, rows))
 
     def ask_boss(self, task: dict[str, Any], text: str) -> None:
         """An agent asked AMO to do something that changes things: the boss decides."""

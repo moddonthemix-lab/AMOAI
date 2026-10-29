@@ -73,6 +73,7 @@ class Thought:
     def __init__(self, text="", brain="local", model=None, cost_usd=0.0, sources=None, refused=False, reason=""):
         self.text, self.brain, self.model, self.cost_usd = text, brain, model, cost_usd
         self.sources, self.refused, self.reason = sources or [], refused, reason
+        self.form = None  # set by fill_form()
 
     def __repr__(self):
         return f"Thought(brain={self.brain!r}, model={self.model!r}, cost=${self.cost_usd:.4f}, refused={self.refused})"
@@ -108,23 +109,56 @@ class FamilyBrain:
         self._internet = internet_check
 
     # ------------------------------------------------------------------ the one call
-    def think(self, prompt, job="chat", local_only=False, system=None, history=None, web=None):
+    def think(self, prompt, job="chat", local_only=False, system=None, history=None, web=None, _schema=None):
         """Answer `prompt`. job: chat | research | code | big. history: [{"role", "content"}, ...]."""
         if job not in MODELS:
             raise ValueError(f"job must be one of: {', '.join(MODELS)}")
         system = system if system is not None else self.system
         web = (job == "research") if web is None else web
         if local_only:
-            return self._local(prompt, system, history, "🏠 local-only channel")
+            return self._local(prompt, system, history, "🏠 local-only channel", _schema)
         allowed, reason = self._cloud_allowed(prompt, system, history, job)
         if allowed:
             try:
-                return self._cloud(prompt, system, history, job, web)
+                return self._cloud(prompt, system, history, job, web, _schema)
             except _CloudUnavailable as e:
                 reason = str(e)
         if job == "research" and web:
             return Thought(brain="wait", reason=reason)
-        return self._local(prompt, system, history, reason)
+        return self._local(prompt, system, history, reason, _schema)
+
+    def fill_form(self, form, prompt, job="chat", local_only=False, system=None, history=None):
+        """Answer `prompt` by filling in a shared form. `form` is a form name or the dict from hub.form(name).
+        Returns a Thought whose .form is {"name", "items", "note"}, ready for hub.post_result(..., form=t.form).
+        No web search here: gather the information first (e.g. with think()), then pass it in `prompt`."""
+        if isinstance(form, str):
+            form = self.hub.form(form)
+        schema = form.get("json_schema")
+        if not schema:
+            raise ValueError("pass the form from hub.form(name), which includes its json_schema")
+        fields = "\n".join(f"- {f['name']} ({f['type']}{': ' + ' / '.join(f['choices']) if f.get('choices') else ''})"
+                           f"{'' if f.get('required') else ', optional: null if unknown'}"
+                           f"{': ' + f['help'] if f.get('help') else ''}" for f in form["fields"])
+        how = (f"Fill in the '{form['title']}' form. {form.get('description', '')}\n"
+               f"Answer with JSON only: {{\"items\": [...], \"note\": \"...\"}}. "
+               f"{'Each item' if form['list'] else 'Exactly one item'} has these fields:\n{fields}")
+        system = ((system if system is not None else self.system) + "\n\n" + how).strip()
+        t = None
+        for _ in range(2):
+            t = self.think(prompt, job=job, local_only=local_only, system=system, history=history, web=False,
+                           _schema=schema)
+            if t.refused or t.brain == "wait":
+                return t
+            try:
+                data = json.loads(re.sub(r"^```(?:json)?|```$", "", t.text.strip(), flags=re.M).strip())
+                if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+                    raise ValueError("no items list")
+                t.form = {"name": form["name"], "items": data["items"], "note": str(data.get("note") or "")}
+                return t
+            except ValueError as e:  # local models occasionally slip; ask once more
+                prompt = f"{prompt}\n\n(Your last answer wasn't valid JSON for the form: {e}. Reply with JSON only.)"
+        t.reason = "the model didn't produce a valid form"
+        return t
 
     # ------------------------------------------------------------------ deciding
     def _cloud_allowed(self, prompt, system, history, job):
@@ -148,7 +182,7 @@ class FamilyBrain:
         return bool(check.get("allowed")), check.get("reason", "")
 
     # ------------------------------------------------------------------ cloud
-    def _cloud(self, prompt, system, history, job, web):
+    def _cloud(self, prompt, system, history, job, web, schema=None):
         try:
             import anthropic
         except ImportError:  # only possible when a client was passed in (e.g. tests)
@@ -161,7 +195,9 @@ class FamilyBrain:
                   "output_config": {"effort": EFFORT[job]}}
         if system:
             kwargs["system"] = system
-        if web and model in WEB_MODELS:
+        if schema:  # structured output: the answer is guaranteed to match the form's shape
+            kwargs["output_config"]["format"] = {"type": "json_schema", "schema": schema}
+        elif web and model in WEB_MODELS:
             kwargs["tools"] = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 5}]
         totals = {"input": 0, "output": 0, "cache_write": 0, "cache_read": 0, "web": 0}
         served_by = model
@@ -225,10 +261,13 @@ class FamilyBrain:
         return urls
 
     # ------------------------------------------------------------------ local
-    def _local(self, prompt, system, history, reason):
+    def _local(self, prompt, system, history, reason, schema=None):
         messages = ([{"role": "system", "content": system}] if system else []) + list(history or []) + \
                    [{"role": "user", "content": prompt}]
-        body = json.dumps({"model": self.local_model, "messages": messages, "stream": False}).encode()
+        req_body = {"model": self.local_model, "messages": messages, "stream": False}
+        if schema:
+            req_body["format"] = schema  # Ollama shapes its answer to the schema
+        body = json.dumps(req_body).encode()
         req = urllib.request.Request(f"{self.ollama_url}/api/chat", data=body,
                                      headers={"Content-Type": "application/json"})
         try:

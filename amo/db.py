@@ -479,6 +479,28 @@ MIGRATIONS: list[str] = [
         decision TEXT
     );
     """,
+    # 24 — the trading workflow (Amo ➜ Trader): each posted plan, and how each setup did
+    """
+    CREATE TABLE trade_plans (
+        id INTEGER PRIMARY KEY,
+        task_id INTEGER,
+        posted_at TEXT NOT NULL,
+        form TEXT NOT NULL,          -- the trade_setup form as posted
+        symbols TEXT NOT NULL,       -- plain ticker → market symbol, e.g. {"NQ": "NQ=F"}
+        graded_at TEXT
+    );
+    CREATE TABLE setup_grades (
+        id INTEGER PRIMARY KEY,
+        plan_id INTEGER NOT NULL,
+        symbol TEXT NOT NULL,
+        timeframe TEXT,
+        pattern TEXT,
+        direction TEXT,
+        outcome TEXT NOT NULL,       -- hit target | hit stop | still open | not triggered
+        r_multiple REAL,
+        graded_at TEXT NOT NULL
+    );
+    """,
 ]
 
 

@@ -111,7 +111,7 @@ def _make_brain(hub: Any = None, **fakes: Any) -> Any:
         """The shared brain, except that "answer locally" hands the turn back to AMO's own local path
         (its chosen model, tools and streaming) instead of a plain non-streaming Ollama call."""
 
-        def _local(self, prompt, system, history, reason):  # noqa: ANN001
+        def _local(self, prompt, system, history, reason, schema=None):  # noqa: ANN001
             return Thought(brain="local", reason=reason)
 
     # A short timeout: if the hub's computer is asleep, answer locally in seconds, not half a minute.

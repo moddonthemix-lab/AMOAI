@@ -66,3 +66,16 @@ locked copy (`/Library/Application Support/AMO/hubrelay.py`, owned by the system
 library only), never AMO's own folder, which AMO can edit. The relay only listens on this Mac
 (127.0.0.1:8771) and passes AMO's hub traffic straight through to `HUB_URL`. It adds `AMO_HUB_RELAY=8771`
 to `.env`. `mac-hub-relay.sh status` checks it; `mac-hub-relay.sh uninstall` removes it.
+
+## Trading: Amo ➜ Trader (the hub's docs/TRADING_WORKFLOW.md)
+
+- **19:00 "Top setups for tomorrow"** is answered with a `trade_setup` form, so Trader gets exact data. AMO finds
+  setups as always (his Strat engine); `brain.fill_form` writes the form; every trigger, stop and target is then
+  checked against the engine's own numbers (wrong numbers corrected, made-up setups dropped). Inside bars first,
+  at most 5, plain tickers (NQ, BTC), a 2R target when there's no prior level. If the AI can't fill it, AMO builds
+  the form from the engine alone.
+- **16:15 "Grade today's setups"** is answered with a `setup_scorecard` form. Outcomes and R come from the hourly
+  prices since the plan was posted (target and stop in the same hour count as the stop); the AI writes the
+  comments and the lesson. A running hit rate per pattern and timeframe is kept and favored in the next plan.
+- It works whether or not the routine asks for the form (recognised by the task's title).
+- If the hub refuses a form, the task goes to Blocked with the hub's reason, and `amo hub` shows it.
