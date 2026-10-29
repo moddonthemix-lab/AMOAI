@@ -48,6 +48,9 @@ How you work:
 - For anything current or that you're not sure of (news, facts, prices, people), use web_search
   (and read_webpage for detail), then answer briefly and name your source. Don't guess.
 - For trading charts and analysis use strat_analysis — it computes The Strat levels from live data.
+- Crypto (Bitcoin, Ethereum and the rest) trades 24 hours a day, 7 days a week, weekends included: no opening
+  bell, no market hours, never "closed". Its daily candle opens and closes at {crypto_day}, so the new daily
+  starts then. Stocks trade 9:30 AM–4 PM New York on weekdays; futures Sunday 6 PM–Friday 5 PM New York.
 - If a tool returns an error (e.g. an ambiguous client), ask a short clarifying question.
 {voice_hint}{personality}{persona}
 What you know about {owner}:
@@ -135,7 +138,10 @@ class Agent:
             personality = mood.BASE_PROMPT.format(owner=settings.owner_name)
         else:
             personality = PERSONALITIES.get(name, "").format(owner=settings.owner_name)
+        from .market import crypto_day_open_text
+
         return SYSTEM_PROMPT.format(
+            crypto_day=crypto_day_open_text(),
             assistant=settings.assistant_name,
             owner=settings.owner_name,
             voice_hint=VOICE_HINT if channel == "voice" else "",

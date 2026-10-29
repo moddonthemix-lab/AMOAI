@@ -71,6 +71,9 @@ class Settings:
     # Coding: a local code model (qwen2.5-coder:3b suits an Intel Mac / Pi; :7b is smarter but slower),
     # the folders AMO may read and fix code in, and whether it fixes its own bugs (only if all tests pass).
     # Your knowledge folder: drop in documents (txt, md, pdf, docx, csv, html…) and AMO learns from them.
+    # When crypto's daily candle starts: "utc" (midnight UTC, what crypto charts and exchanges use —
+    # 8 PM New York in summer, 7 PM in winter) or a fixed New York time like "20:00".
+    crypto_day_start: str = field(default_factory=lambda: _env("AMO_CRYPTO_DAY_START", "utc"))
     printer: str = field(default_factory=lambda: _env("AMO_PRINTER", ""))  # blank = the Mac's default printer
     print_dry_run: bool = False  # evals: pretend to print
     persona_file: str = field(default_factory=lambda: _env("AMO_PERSONA_FILE", ""))  # default data/persona.md

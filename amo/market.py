@@ -103,6 +103,64 @@ def _fetch(symbol: str, interval: str, rng: str) -> tuple[list[Bar], dict[str, A
     return bars, res.get("meta", {})
 
 
+def _crypto_day_start_spec() -> tuple[int, int] | None:
+    """None = midnight UTC; (hour, minute) = that time of day in New York (AMO's time zone)."""
+    from .config import settings
+
+    spec = (settings.crypto_day_start or "utc").strip().lower()
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", spec)
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def crypto_day_key(t: int) -> Any:
+    """Which crypto trading day the moment `t` (unix seconds) belongs to."""
+    spec = _crypto_day_start_spec()
+    if spec is None:
+        return t // 86400
+    from zoneinfo import ZoneInfo
+
+    from .config import settings
+
+    local = datetime.fromtimestamp(t, ZoneInfo(settings.timezone))
+    return (local - timedelta(hours=spec[0], minutes=spec[1])).date()
+
+
+def crypto_day_open_text(now: datetime | None = None) -> str:
+    """'8:00 PM New York time (midnight UTC)' — when crypto's daily candle opens and closes."""
+    from zoneinfo import ZoneInfo
+
+    from .config import settings
+
+    tz = ZoneInfo(settings.timezone)
+    spec = _crypto_day_start_spec()
+    if spec is not None:
+        h, mi = spec
+        return f"{(h - 1) % 12 + 1}:{mi:02d} {'AM' if h < 12 else 'PM'} New York time"
+    now = now or datetime.now(timezone.utc)
+    midnight = now.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    local = midnight.astimezone(tz)
+    return f"{local:%-I:%M %p} {'New York' if 'New_York' in settings.timezone else 'local'} time (midnight UTC)"
+
+
+def crypto_daily(daily: list[Bar], hourly: list[Bar]) -> list[Bar]:
+    """Crypto's daily candles, the recent ones rebuilt from hourly bars on the crypto day boundary.
+    Yahoo's crypto dailies can skip a day right after the daily rollover; the hourly bars don't."""
+    groups: list[list[Bar]] = []
+    last = None
+    for b in hourly:
+        k = crypto_day_key(b.t)
+        if k != last:
+            groups.append([])
+            last = k
+        groups[-1].append(b)
+    if len(groups) < 3:
+        return daily
+    built = [Bar(g[0].t, g[0].o, max(x.h for x in g), min(x.l for x in g), g[-1].c) for g in groups[1:]]  # first may be partial
+    first = groups[1][0].t
+    older = [b for b in daily if b.t < first and crypto_day_key(b.t) != crypto_day_key(first)]
+    return older + built
+
+
 def candles(symbol: str, tf: str = "D") -> tuple[list[Bar], dict[str, Any]]:
     """Candles for a timeframe: 60, 4H, D, W, M or Q (4H from hourly, W/M/Q from daily). Cached 60s."""
     symbol = normalize(symbol)
@@ -117,6 +175,11 @@ def candles(symbol: str, tf: str = "D") -> tuple[list[Bar], dict[str, Any]]:
         out = (four_hour(hourly, symbol, meta), meta)
     elif tf == "D":
         out = _fetch(symbol, *DAILY)
+        if symbol.endswith("-USD"):  # crypto: 24/7, with a clean daily rollover (see crypto_daily)
+            try:
+                out = (crypto_daily(out[0], candles(symbol, "60")[0]), out[1])
+            except Exception:  # noqa: BLE001 — no hourly data: keep Yahoo's dailies
+                pass
     elif tf in ("W", "M", "Q"):
         daily, meta = candles(symbol, "D")
         out = (aggregate(daily, tf, meta.get("gmtoffset", 0)), meta)

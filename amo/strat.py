@@ -329,6 +329,11 @@ def thesis(a: dict[str, Any]) -> str:
     setups: list[Setup] = a["_setups"]
     lines = [f"{a['symbol']} — The Strat thesis (price {fmt(a['price'])})", "",
              f"AMO's take: {take(a)['verdict']}", ""]
+    if a["symbol"].endswith("-USD"):
+        from .market import crypto_day_open_text
+
+        lines[1:1] = [f"Crypto trades 24/7 — each daily candle opens at {crypto_day_open_text()} "
+                      "and closes 24 hours later.", ""]
 
     cont = " · ".join(f"{'60m' if tf == '60' else tf} {frames[tf].arrow}" for tf in CONTINUITY_TFS if tf in frames)
     ftfc = {"up": "FULL TIMEFRAME CONTINUITY UP", "down": "FULL TIMEFRAME CONTINUITY DOWN"}.get(
